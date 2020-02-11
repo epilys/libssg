@@ -1,26 +1,93 @@
 # libssg
 > static site generation library
 
-Build your own executable static generator that includes your building logic instead of using configuration files and command line arguments. Inspired by [Hakyll](https://jaspervdj.be/hakyll/)
+Build your own executable static generator that includes your building logic instead of using configuration files and command line arguments. Inspired by [Hakyll](https://jaspervdj.be/hakyll/).
+
+- You will need to have `pandoc` installed to use Markdown.
+- Uses the [handlebars template engine](https://docs.rs/handlebars/3.0.1/handlebars/index.html)
 
 ```rust
-use libssg;
+use libssg::*;
+/*
+ * $ tree
+ * .
+ * ├── Cargo.toml etc
+ * ├── src
+ * │   └── main.rs
+ * ├── css
+ * │   └── *.css
+ * ├── images
+ * │   └── *.png
+ * ├── index.md
+ * ├── posts
+ * │   └── *.md
+ * ├── _site
+ * │   ├── css
+ * │   │   └── *.css
+ * │   ├── images
+ * │   │   └── *.png
+ * │   ├── index.html
+ * │   ├── posts
+ * │   │   └── *.html
+ * │   └── rss.xml
+ * └── templates
+ *     ├── default.hbs
+ *     └── post.hbs
+*/
+
 
 fn main() {
-    let mut state = libssg::State::new();
+    let mut state = State::new();
     state
-        .then(libssg::r#match(
-            "posts/*",
-            libssg::Route::SetExtension("html"),
-            Box::new(|state, body| state.templates().render("default.html", body).unwrap()),
+        .then(match_pattern(
+            "^posts/*",
+            Route::SetExtension("html"),
+               Renderer::Pipeline(vec![
+                   Renderer::LoadAndApplyTemplate("templates/post.hbs"),
+                   Renderer::LoadAndApplyTemplate("templates/default.hbs"),
+               ]),
+            compiler_seq(
+                pandoc(),
+                Box::new(|state, path| {
+                    let path = path
+                        .strip_prefix(&state.output_dir().parent().unwrap())
+                        .unwrap_or(&path)
+                        .to_path_buf();
+                    if state.verbosity() > 3 {
+                        println!("adding {} to RSS snapshot", path.display());
+                    }
+                    let uuid = uuid_from_path(&path);
+                    state.add_to_snapshot("main-rss-feed".into(), uuid);
+                    Default::default()
+                }),
+            ),
         ))
-        .then(libssg::r#match(
+        .then(match_pattern(
             "index.md",
-            libssg::Route::SetExtension("html"),
-            Box::new(|state, body| state.templates().render("default.html", body).unwrap()),
+            Route::SetExtension("html"),
+            Renderer::LoadAndApplyTemplate("templates/default.hbs"),
+            pandoc(),
+        ))
+        .then(copy("^images/*", Route::Id))
+        .then(copy("^css/*", Route::Id))
+        .then(build_rss_feed(
+            "rss.xml".into(),
+            rss_feed(
+                "main-rss-feed".into(),
+                RssItem {
+                    title: "example page".into(),
+                    description: "example using libssg".into(),
+                    link: "http://example.local".into(),
+                    last_build_date: String::new(),
+                    pub_date: "Thu, 01 Jan 1970 00:00:00 +0000".to_string(),
+                    ttl: 1800,
+                },
+            ),
         ))
         .finish();
 }
 ```
 
-Output is saved at `./_site/`.
+`cargo run` and the output is saved at `./_site/`.
+
+Set `$FORCE`, `$VERBOSITY` (`0..5`) to change behaviour.
