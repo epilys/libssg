@@ -23,10 +23,44 @@ use super::State;
 use serde_json::Value;
 use std::path::Path;
 
-/// A template rending pipeline.
+pub trait BFn: Fn(&mut Value) -> String {
+    fn clone_boxed(&self) -> Box<dyn BFn>;
+}
+
+impl<T> BFn for T
+where
+    T: 'static + Clone + Fn(&mut Value) -> String,
+{
+    fn clone_boxed(&self) -> Box<dyn BFn> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn BFn> {
+    fn clone(&self) -> Self {
+        self.as_ref().clone_boxed()
+    }
+}
+
+/// A template rendering pipeline.
+#[derive(Clone)]
 pub enum Renderer {
     LoadAndApplyTemplate(&'static str),
     Pipeline(Vec<Renderer>),
+    Custom(Box<dyn BFn>),
+    None,
+}
+
+impl std::fmt::Debug for Renderer {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use Renderer::*;
+        match self {
+            LoadAndApplyTemplate(ref t) => write!(fmt, "Renderer::LoadAndApplyTemplate({})", t),
+            Pipeline(ref list) => write!(fmt, "Renderer::Pipeline({:?})", list),
+            Custom(_) => write!(fmt, "Renderer::Custom(_)"),
+            None => write!(fmt, "Renderer::None"),
+        }
+    }
 }
 
 impl Renderer {
@@ -40,6 +74,7 @@ impl Renderer {
             Renderer::Pipeline(ref list) => list
                 .iter()
                 .fold(false, |acc, el| acc || el.check_mtime(state, dest_path)),
+            Renderer::None | Renderer::Custom(_) => true,
         }
     }
 
@@ -58,6 +93,8 @@ impl Renderer {
                 }
                 String::new()
             }
+            Renderer::Custom(ref c) => c(context),
+            Renderer::None => String::new(),
         }
     }
 }

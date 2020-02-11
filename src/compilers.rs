@@ -36,7 +36,7 @@ use super::*;
 /// ```
 ///
 /// `Compiler`s' only obligation is transforming the contents of the given file `path` into a
-/// `String`.
+/// `String` by adding it to the metadata map with the key `body`.
 pub type Compiler = Box<dyn Fn(&mut State, &Path) -> Value>;
 
 pub use pandoc::pandoc;
@@ -206,4 +206,107 @@ mod pandoc {
             }
         }
     }
+}
+
+pub use rss::*;
+
+mod rss {
+    use super::*;
+    use serde::{self, Serialize};
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    #[derive(Serialize)]
+    pub struct RssItem {
+        pub title: String,
+        pub description: String,
+        pub link: String,
+        pub last_build_date: String,
+        pub pub_date: String,
+        pub ttl: i32,
+    }
+
+    const RSS_TEMPLATE: &'static str = r#"<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+  <title>{{ config.title }}</title>
+  <description><![CDATA[{{ include config.description }}]]></description>
+  <link>{{ config.link }}</link>
+  <atom:link href="{{ config.link }}/{{ path }}" rel="self" type="application/rss+xml" />
+  <pubDate> Thu, 01 Jan 1970 00:00:00 +0000 </pubDate>
+ {{#each items}}
+ <item>
+  <title>{{ title }}</title>
+  <description><![CDATA[{{ include description }}]]></description>
+  <link>{{ config.link }}{{ link }}</link>
+  <guid>{{ config.link }}{{ link }}</guid>
+  <pubDate>{{ pub_date }}</pubDate>
+ </item>
+{{/each~}}
+
+</channel>
+</rss>"#;
+    pub fn rss_feed(snapshot_name: String, configuration: RssItem) -> Compiler {
+        Box::new(move |state: &mut State, dest_path: &Path| {
+            let snapshot = &state.snapshots[&snapshot_name];
+            let mut rss_items = Vec::with_capacity(snapshot.len());
+            for artifact in snapshot.iter() {
+                if let Value::Object(ref map) = &state.artifacts[&artifact].metadata {
+                    macro_rules! get_property {
+                        ($key:literal, $default:expr) => {
+                            map.get($key)
+                                .and_then(|t| {
+                                    if let Value::String(ref var) = t {
+                                        Some(var.to_string())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .unwrap_or_else(|| $default)
+                        };
+                    }
+                    rss_items.push(RssItem {
+                        title: get_property!("title", format!("No title, uuid: {}", artifact)),
+                        description: get_property!("body", String::new()),
+                        link: format!(
+                            "{}/{}",
+                            &configuration.link,
+                            &state.artifacts[&artifact].path.display()
+                        ),
+                        last_build_date: String::new(),
+                        pub_date: get_property!(
+                            "date",
+                            "Thu, 01 Jan 1970 00:00:00 +0000".to_string()
+                        ),
+                        ttl: 1800,
+                    });
+                }
+            }
+            let mut handlebars = Handlebars::new();
+            handlebars.register_helper("include", Box::new(include_helper));
+
+            let test = handlebars
+                .render_template(
+                    RSS_TEMPLATE,
+                    &json!({ "items": rss_items, "config": configuration, "path": dest_path }),
+                )
+                .unwrap();
+            json!({ "body": test })
+        })
+    }
+}
+
+pub fn compiler_seq(compiler_a: Compiler, compiler_b: Compiler) -> Compiler {
+    Box::new(move |state: &mut State, path: &Path| {
+        let mut a = compiler_a(state, &path);
+        let b = compiler_b(state, &path);
+        let a = match (a, b) {
+            (Value::Object(mut map_a), Value::Object(map_b)) => {
+                map_a.extend(map_b.into_iter());
+                Value::Object(map_a)
+            }
+            (a, _) => a,
+        };
+        a
+    })
 }

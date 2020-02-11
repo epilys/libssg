@@ -20,6 +20,7 @@
  */
 
 use super::*;
+use serde_json::json;
 use std::env;
 
 /// `Rule`s are generation steps, that is, separate steps in the generation process. They can
@@ -38,14 +39,14 @@ pub fn match_pattern<P: Into<MatchPattern>>(
     Box::new(move |state: &mut State| {
         for pattern in patterns {
             for entry in pattern.list() {
-                let path = entry.path();
-                let extension = if let Some(e) = path.extension() {
+                let resource = entry.path();
+                let extension = if let Some(e) = resource.extension() {
                     e
                 } else {
                     continue;
                 };
                 if extension == "markdown" || extension == "md" {
-                    let mut dest_path = path
+                    let mut dest_path = resource
                         .strip_prefix(env::current_dir().unwrap())
                         .unwrap()
                         .to_path_buf();
@@ -58,22 +59,21 @@ pub fn match_pattern<P: Into<MatchPattern>>(
                         }
                         Route::Custom(ref cl) => cl(&dest_path),
                     };
-                    if state.check_mtime(&dest_path, &path)
-                        || renderer.check_mtime(state, &dest_path)
-                    {
-                        let mut context = compiler(state, &path);
-                        let page_contents = renderer.render(state, &mut context);
-                        state.add_page(dest_path, page_contents);
-                    }
+                    state.add_page(
+                        dest_path.clone(),
+                        resource.clone(),
+                        &compiler,
+                        renderer.clone(),
+                    );
                 }
             }
         }
     })
 }
 
-pub fn create(path: String, _route: Route, _compile: Box<dyn Fn() -> String>) -> Rule {
+pub fn create(path: PathBuf, compiler: Compiler) -> Rule {
     Box::new(move |state: &mut State| {
-        state.add_page(PathBuf::from(path), "hello world".to_string());
+        state.add_page(path.clone(), path.clone(), &compiler, Renderer::None);
     })
 }
 
@@ -104,5 +104,25 @@ pub fn copy<P: Into<MatchPattern>>(pattern: P, route: Route) -> Rule {
                 );
             }
         }
+    })
+}
+
+pub fn build_rss_feed(path: PathBuf, compiler: Compiler) -> Rule {
+    Box::new(move |state: &mut State| {
+        state.add_page(
+            path.clone(),
+            path.clone(),
+            &compiler,
+            Renderer::Custom(Box::new(|metadata| {
+                if let Value::Object(ref map) = metadata {
+                    map.get("body")
+                        .and_then(|b| b.as_str())
+                        .unwrap_or_default()
+                        .to_string()
+                } else {
+                    String::new()
+                }
+            })),
+        );
     })
 }

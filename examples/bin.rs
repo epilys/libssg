@@ -43,13 +43,27 @@ fn main() {
     let mut state = libssg::State::new();
     state
         .then(libssg::match_pattern(
-            "posts/*",
+            "^posts/*",
             libssg::Route::SetExtension("html"),
             libssg::Renderer::LoadAndApplyTemplate("templates/default.html"),
-            libssg::pandoc(),
+            libssg::compiler_seq(
+                libssg::pandoc(),
+                Box::new(|state, path| {
+                    let path = path
+                        .strip_prefix(&state.output_dir().parent().unwrap())
+                        .unwrap_or(&path)
+                        .to_path_buf();
+                    if state.verbosity() > 3 {
+                        println!("adding {} to RSS snapshot", path.display());
+                    }
+                    let uuid = libssg::uuid_from_path(&path);
+                    state.add_to_snapshot("main-rss-feed".into(), uuid);
+                    Default::default()
+                }),
+            ),
         ))
         .then(libssg::match_pattern(
-            "index.md",
+            "^index.md",
             libssg::Route::SetExtension("html"),
             libssg::Renderer::Pipeline(vec![
                 libssg::Renderer::LoadAndApplyTemplate("templates/index.html"),
@@ -57,6 +71,20 @@ fn main() {
             ]),
             libssg::pandoc(),
         ))
-        .then(libssg::copy("css/*", libssg::Route::Id))
+        .then(libssg::copy("^css/*", libssg::Route::Id))
+        .then(libssg::build_rss_feed(
+            "rss.xml".into(),
+            libssg::rss_feed(
+                "main-rss-feed".into(),
+                libssg::RssItem {
+                    title: "example page".into(),
+                    description: "example using libssg".into(),
+                    link: "http://localhost".into(),
+                    last_build_date: String::new(),
+                    pub_date: "Thu, 01 Jan 1970 00:00:00 +0000".to_string(),
+                    ttl: 1800,
+                },
+            ),
+        ))
         .finish();
 }

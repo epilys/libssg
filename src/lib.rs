@@ -20,14 +20,15 @@
  */
 
 use handlebars;
+use handlebars::Handlebars;
 use regex;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs};
-
-use handlebars::Handlebars;
+pub use uuid::Uuid;
 
 mod route;
 pub use route::*;
@@ -58,12 +59,13 @@ mod tests {
 #[derive(Debug)]
 enum PageGeneration {
     Create(String),
-    Copy(PathBuf),
 }
 
 #[derive(Debug)]
 pub struct State {
-    pages: HashMap<PathBuf, PageGeneration>,
+    snapshots: HashMap<String, Vec<Uuid>>,
+    artifacts: HashMap<Uuid, BuildArtifact>,
+    build_actions: HashMap<PathBuf, BuildAction>,
     templates: Handlebars<'static>,
     output_dir: PathBuf,
     force_generate: bool,
@@ -83,9 +85,12 @@ impl State {
         }
         let output_dir = PathBuf::from("./_site/").canonicalize().unwrap();
         State {
-            pages: Default::default(),
             templates,
             output_dir,
+            artifacts: Default::default(),
+            build_actions: Default::default(),
+
+            snapshots: Default::default(),
             force_generate: env::var("FORCE").is_ok(),
             verbosity: env::var("VERBOSITY")
                 .ok()
@@ -107,6 +112,18 @@ impl State {
 
     pub fn verbosity(&self) -> u8 {
         self.verbosity
+    }
+
+    pub fn artifacts(&self) -> &HashMap<Uuid, BuildArtifact> {
+        &self.artifacts
+    }
+
+    pub fn snapshots(&self) -> &HashMap<String, Vec<Uuid>> {
+        &self.snapshots
+    }
+
+    pub fn add_to_snapshot(&mut self, key: String, artifact: Uuid) {
+        self.snapshots.entry(key).or_default().push(artifact)
     }
 
     /// Check if `dest`'s mtime is older than `resource`'s.
@@ -145,7 +162,8 @@ impl State {
         ret
     }
 
-    pub fn copy_page(&mut self, resource: PathBuf, dest: PathBuf) {
+    pub fn copy_page(&mut self, resource: PathBuf, dest: PathBuf) -> Uuid {
+        let uuid = uuid_from_path(&resource);
         if self.check_mtime(&dest, &resource) {
             if self.verbosity > 0 {
                 println!(
@@ -154,16 +172,98 @@ impl State {
                     dest.display()
                 );
             }
-            self.pages.insert(dest, PageGeneration::Copy(resource));
+            self.build_actions.insert(
+                dest.clone(),
+                BuildAction {
+                    src: uuid.clone(),
+                    to: Renderer::None,
+                },
+            );
+            self.artifacts.insert(
+                uuid.clone(),
+                BuildArtifact {
+                    uuid: uuid.clone(),
+                    path: dest.clone(),
+                    resource,
+                    metadata: Default::default(),
+                    contents: String::new(),
+                },
+            );
+        } else {
+            self.artifacts.insert(
+                uuid.clone(),
+                BuildArtifact {
+                    uuid: uuid.clone(),
+                    path: dest.clone(),
+                    resource: dest,
+                    metadata: Default::default(),
+                    contents: String::new(),
+                },
+            );
         }
+        uuid
     }
 
-    pub fn add_page(&mut self, path: PathBuf, contents: String) -> &mut Self {
-        if self.verbosity > 0 {
-            println!("Will create _site/{}", path.display());
+    pub fn add_page(
+        &mut self,
+        dest: PathBuf,
+        resource: PathBuf,
+        compiler: &Compiler,
+        renderer: Renderer,
+    ) -> Uuid {
+        let resource = resource
+            .strip_prefix(&self.output_dir().parent().unwrap())
+            .unwrap_or(&resource)
+            .to_path_buf();
+        let uuid = uuid_from_path(&resource);
+        let mut metadata = compiler(self, &resource);
+        if self.check_mtime(&dest, &resource) || renderer.check_mtime(self, &dest) {
+            if self.verbosity > 0 {
+                print!(
+                    "Will create {} from resource {} with artifact uuid {}",
+                    dest.display(),
+                    resource.display(),
+                    uuid,
+                );
+                if self.verbosity > 3 {
+                    print!(" and metadata {:#?}", &metadata,);
+                }
+                println!("");
+            }
+            let contents = renderer.render(self, &mut metadata);
+            self.artifacts.insert(
+                uuid.clone(),
+                BuildArtifact {
+                    uuid: uuid.clone(),
+                    path: dest.clone(),
+                    resource,
+                    metadata,
+                    contents,
+                },
+            );
+            self.build_actions.insert(
+                dest.clone(),
+                BuildAction {
+                    src: uuid.clone(),
+                    to: renderer,
+                },
+            );
+        } else {
+            if self.verbosity > 0 {
+                println!("Using cached _site/{}", dest.display());
+            }
+            self.artifacts.insert(
+                uuid.clone(),
+                BuildArtifact {
+                    uuid: uuid.clone(),
+                    path: dest.clone(),
+                    resource,
+                    metadata,
+                    contents: String::new(),
+                },
+            );
         }
-        self.pages.insert(path, PageGeneration::Create(contents));
-        self
+        uuid
     }
 
     pub fn then(&mut self, rule: Rule) -> &mut Self {
@@ -179,7 +279,7 @@ impl State {
     }
 
     pub fn finish(&mut self) {
-        if self.pages.is_empty() {
+        if self.build_actions.is_empty() {
             println!(r#"Nothing to be generated. This might happen if:
 - You haven't added any rules.
 - You either haven't made any changes to your source files or they weren't detected (might be a bug). Rerun with $FORCE environmental variable set to ignore mtimes and force generation. Set $VERBOSITY to greater than 1 to get more messages."#);
@@ -189,7 +289,14 @@ impl State {
         if self.verbosity > 0 {
             println!("Output directory is {}", self.output_dir.display());
         }
-        for (mut path, generation) in self.pages.drain() {
+        let actions = self.build_actions.drain().collect::<Vec<(_, _)>>();
+        for (mut path, action) in actions {
+            let artifact = &self.artifacts[&action.src];
+            let mut context = artifact.to_value();
+            let contents = match action.to {
+                Renderer::None => None,
+                renderer => Some(renderer.render(self, &mut context)),
+            };
             if path.is_absolute() {
                 path = path
                     .strip_prefix(&self.output_dir.parent().unwrap())
@@ -202,32 +309,75 @@ impl State {
                 Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
                 err => err.unwrap(),
             }
-            match generation {
-                PageGeneration::Create(contents) => {
-                    use std::io::prelude::*;
+            if let Some(contents) = contents {
+                use std::io::prelude::*;
 
-                    if self.verbosity > 0 {
-                        println!("{}: creating {}", path.display(), self.output_dir.display());
-                    }
-                    let mut file = fs::File::create(&self.output_dir).unwrap();
-                    file.write_all(contents.as_bytes()).unwrap();
+                if self.verbosity > 0 {
+                    println!("{}: creating {}", path.display(), self.output_dir.display());
                 }
-                PageGeneration::Copy(src_path) => {
-                    if self.verbosity > 0 {
-                        println!(
-                            "{}: copying to {}",
-                            src_path.display(),
-                            self.output_dir.display()
-                        );
-                    }
-                    assert!(&src_path != &self.output_dir);
+                let mut file = fs::File::create(&self.output_dir).unwrap();
+                file.write_all(contents.as_bytes()).unwrap();
+            } else {
+                let src_path = &self.artifacts[&action.src].resource;
+                if self.verbosity > 0 {
+                    println!(
+                        "{}: copying to {}",
+                        src_path.display(),
+                        self.output_dir.display()
+                    );
+                }
+                assert!(src_path != &self.output_dir);
 
-                    fs::copy(src_path, &self.output_dir).unwrap();
-                }
+                fs::copy(src_path, &self.output_dir).unwrap();
             }
             for _ in fs_depth..self.output_dir.components().count() {
                 self.output_dir.pop();
             }
         }
     }
+
+    pub fn output_dir(&self) -> &Path {
+        &self.output_dir
+    }
+}
+
+pub struct BuildArtifact {
+    uuid: Uuid,
+    path: PathBuf,
+    resource: PathBuf,
+    metadata: Value,
+    contents: String,
+}
+
+impl std::fmt::Debug for BuildArtifact {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            fmt,
+            "BuildArtifact {{ uuid: {}, resource: {}, metadata: {:?}, contents: \"{:.15}...\" }}",
+            self.uuid,
+            self.resource.display(),
+            &self.metadata,
+            &self.contents
+        )
+    }
+}
+
+impl BuildArtifact {
+    pub fn to_value(&self) -> Value {
+        let mut ret = self.metadata.clone();
+        if let Value::Object(ref mut map) = ret {
+            map.insert("body".to_string(), Value::String(self.contents.clone()));
+        }
+        ret
+    }
+}
+
+#[derive(Debug)]
+pub struct BuildAction {
+    src: Uuid,
+    to: Renderer,
+}
+
+pub fn uuid_from_path(path: &Path) -> Uuid {
+    Uuid::new_v3(&Uuid::NAMESPACE_OID, path.as_os_str().as_bytes())
 }
