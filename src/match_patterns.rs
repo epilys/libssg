@@ -69,9 +69,11 @@ impl Iterator for MatchPathIter {
 
         let entry = next.unwrap();
         let path = entry.path();
-        if path.is_dir() && !path.ends_with("_site") {
-            self.1
-                .insert(0, fs::read_dir(path).expect("Could not read directory"));
+        // FIXME: Smarter exclude patterns.
+        if path.is_dir() && !path.ends_with(".git") && !path.ends_with("target") {
+            if let Ok(dir) = fs::read_dir(path) {
+                self.1.insert(0, dir);
+            }
             return self.next();
         }
         match &self.0 {
