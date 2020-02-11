@@ -22,7 +22,7 @@
 use handlebars;
 use handlebars::Handlebars;
 use regex;
-use serde_json::Value;
+pub use serde_json::Value;
 use std::collections::HashMap;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -54,11 +54,6 @@ mod tests {
     fn it_works() {
         assert_eq!(2 + 2, 4);
     }
-}
-
-#[derive(Debug)]
-enum PageGeneration {
-    Create(String),
 }
 
 #[derive(Debug)]
@@ -216,7 +211,7 @@ impl State {
             .unwrap_or(&resource)
             .to_path_buf();
         let uuid = uuid_from_path(&resource);
-        let mut metadata = compiler(self, &resource);
+        let metadata = compiler(self, &resource);
         if self.check_mtime(&dest, &resource) || renderer.check_mtime(self, &dest) {
             if self.verbosity > 0 {
                 print!(
@@ -230,7 +225,6 @@ impl State {
                 }
                 println!("");
             }
-            let contents = renderer.render(self, &mut metadata);
             self.artifacts.insert(
                 uuid.clone(),
                 BuildArtifact {
@@ -238,7 +232,7 @@ impl State {
                     path: dest.clone(),
                     resource,
                     metadata,
-                    contents,
+                    contents: String::new(),
                 },
             );
             self.build_actions.insert(
@@ -292,10 +286,10 @@ impl State {
         let actions = self.build_actions.drain().collect::<Vec<(_, _)>>();
         for (mut path, action) in actions {
             let artifact = &self.artifacts[&action.src];
-            let mut context = artifact.to_value();
+            let mut metadata = artifact.metadata.clone();
             let contents = match action.to {
                 Renderer::None => None,
-                renderer => Some(renderer.render(self, &mut context)),
+                renderer => Some(renderer.render(self, &mut metadata)),
             };
             if path.is_absolute() {
                 path = path
@@ -313,7 +307,11 @@ impl State {
                 use std::io::prelude::*;
 
                 if self.verbosity > 0 {
-                    println!("{}: creating {}", path.display(), self.output_dir.display());
+                    print!("{}: creating {}", path.display(), self.output_dir.display());
+                    if self.verbosity > 3 {
+                        print!(" and metadata {:#?}", &metadata,);
+                    }
+                    println!("");
                 }
                 let mut file = fs::File::create(&self.output_dir).unwrap();
                 file.write_all(contents.as_bytes()).unwrap();
@@ -359,16 +357,6 @@ impl std::fmt::Debug for BuildArtifact {
             &self.metadata,
             &self.contents
         )
-    }
-}
-
-impl BuildArtifact {
-    pub fn to_value(&self) -> Value {
-        let mut ret = self.metadata.clone();
-        if let Value::Object(ref mut map) = ret {
-            map.insert("body".to_string(), Value::String(self.contents.clone()));
-        }
-        ret
     }
 }
 

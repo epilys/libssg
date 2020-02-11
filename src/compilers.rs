@@ -214,7 +214,6 @@ mod rss {
     use super::*;
     use serde::{self, Serialize};
     use serde_json::json;
-    use std::collections::HashMap;
 
     #[derive(Serialize)]
     pub struct RssItem {
@@ -298,7 +297,7 @@ mod rss {
 
 pub fn compiler_seq(compiler_a: Compiler, compiler_b: Compiler) -> Compiler {
     Box::new(move |state: &mut State, path: &Path| {
-        let mut a = compiler_a(state, &path);
+        let a = compiler_a(state, &path);
         let b = compiler_b(state, &path);
         let a = match (a, b) {
             (Value::Object(mut map_a), Value::Object(map_b)) => {

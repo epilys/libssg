@@ -20,7 +20,6 @@
  */
 
 use super::*;
-use serde_json::json;
 use std::env;
 
 /// `Rule`s are generation steps, that is, separate steps in the generation process. They can
