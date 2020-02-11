@@ -36,8 +36,8 @@ use libssg::*;
 */
 
 
-fn main() {
-    let mut state = State::new();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut state = State::new()?;
     state
         .then(match_pattern(
             "^posts/*",
@@ -58,7 +58,7 @@ fn main() {
                     }
                     let uuid = uuid_from_path(&path);
                     state.add_to_snapshot("main-rss-feed".into(), uuid);
-                    Default::default()
+                    Ok(Default::default())
                 }),
             ),
         ))
@@ -84,7 +84,8 @@ fn main() {
                 },
             ),
         ))
-        .finish();
+        .finish()?;
+    Ok(())
 }
 ```
 
