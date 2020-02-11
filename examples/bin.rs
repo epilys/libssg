@@ -39,8 +39,8 @@ use libssg;
  *   FORCE= VERBOSITY=3 cargo run --example bin
  */
 
-fn main() {
-    let mut state = libssg::State::new();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut state = libssg::State::new()?;
     state
         .then(libssg::match_pattern(
             "^posts/*",
@@ -58,7 +58,7 @@ fn main() {
                     }
                     let uuid = libssg::uuid_from_path(&path);
                     state.add_to_snapshot("main-rss-feed".into(), uuid);
-                    Default::default()
+                    Ok(Default::default())
                 }),
             ),
         ))
@@ -86,5 +86,6 @@ fn main() {
                 },
             ),
         ))
-        .finish();
+        .finish()?;
+    Ok(())
 }

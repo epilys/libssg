@@ -19,17 +19,17 @@
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
 
-use super::State;
+use super::{Result, State};
 use serde_json::Value;
 use std::path::Path;
 
-pub trait BFn: Fn(&mut Value) -> String {
+pub trait BFn: Fn(&mut Value) -> Result<String> {
     fn clone_boxed(&self) -> Box<dyn BFn>;
 }
 
 impl<T> BFn for T
 where
-    T: 'static + Clone + Fn(&mut Value) -> String,
+    T: 'static + Clone + Fn(&mut Value) -> Result<String>,
 {
     fn clone_boxed(&self) -> Box<dyn BFn> {
         Box::new(self.clone())
@@ -78,23 +78,23 @@ impl Renderer {
         }
     }
 
-    pub fn render(&self, state: &mut State, context: &mut Value) -> String {
-        match self {
-            Renderer::LoadAndApplyTemplate(ref path) => state.templates_render(path, context),
+    pub fn render(&self, state: &mut State, context: &mut Value) -> Result<String> {
+        Ok(match self {
+            Renderer::LoadAndApplyTemplate(ref path) => state.templates_render(path, context)?,
             Renderer::Pipeline(ref list) => {
                 let mut iter = list.iter().peekable();
                 while let Some(stage) = iter.next() {
-                    let new_body = stage.render(state, context);
+                    let new_body = stage.render(state, context)?;
                     if iter.peek().is_none() {
-                        return new_body;
+                        return Ok(new_body);
                     } else if let Value::Object(ref mut map) = context {
                         map.insert("body".to_string(), Value::String(new_body));
                     }
                 }
                 String::new()
             }
-            Renderer::Custom(ref c) => c(context),
+            Renderer::Custom(ref c) => c(context)?,
             Renderer::None => String::new(),
-        }
+        })
     }
 }

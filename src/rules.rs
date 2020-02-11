@@ -24,7 +24,7 @@ use std::env;
 
 /// `Rule`s are generation steps, that is, separate steps in the generation process. They can
 /// alter `State` however they like.
-pub type Rule = Box<dyn FnOnce(&mut State) -> ()>;
+pub type Rule = Box<dyn FnOnce(&mut State) -> Result<()>>;
 
 /// Find matches from current directory and potentially descendants for `pattern`. For each
 /// match, create a route, render and compile.
@@ -46,8 +46,7 @@ pub fn match_pattern<P: Into<MatchPattern>>(
                 };
                 if extension == "markdown" || extension == "md" {
                     let mut dest_path = resource
-                        .strip_prefix(env::current_dir().unwrap())
-                        .unwrap()
+                        .strip_prefix(env::current_dir().unwrap())?
                         .to_path_buf();
                     let dest_path = match route {
                         Route::Id => dest_path,
@@ -63,16 +62,18 @@ pub fn match_pattern<P: Into<MatchPattern>>(
                         resource.clone(),
                         &compiler,
                         renderer.clone(),
-                    );
+                    )?;
                 }
             }
         }
+        Ok(())
     })
 }
 
 pub fn create(path: PathBuf, compiler: Compiler) -> Rule {
     Box::new(move |state: &mut State| {
-        state.add_page(path.clone(), path.clone(), &compiler, Renderer::None);
+        state.add_page(path.clone(), path.clone(), &compiler, Renderer::None)?;
+        Ok(())
     })
 }
 
@@ -80,13 +81,11 @@ pub fn create(path: PathBuf, compiler: Compiler) -> Rule {
 pub fn copy<P: Into<MatchPattern>>(pattern: P, route: Route) -> Rule {
     let patterns = pattern.into();
     Box::new(move |state: &mut State| {
-        let current_dir = env::current_dir().unwrap();
         for pattern in patterns {
             for entry in pattern.list() {
                 let rel_path = entry
                     .path()
-                    .strip_prefix(&current_dir)
-                    .unwrap()
+                    .strip_prefix(&state.current_dir())?
                     .to_path_buf();
                 state.copy_page(
                     rel_path.clone(),
@@ -103,6 +102,7 @@ pub fn copy<P: Into<MatchPattern>>(pattern: P, route: Route) -> Rule {
                 );
             }
         }
+        Ok(())
     })
 }
 
@@ -113,15 +113,13 @@ pub fn build_rss_feed(path: PathBuf, compiler: Compiler) -> Rule {
             path.clone(),
             &compiler,
             Renderer::Custom(Box::new(|metadata| {
-                if let Value::Object(ref map) = metadata {
-                    map.get("body")
-                        .and_then(|b| b.as_str())
-                        .unwrap_or_default()
-                        .to_string()
+                Ok(if let Value::Object(ref map) = metadata {
+                    map.get("body").and_then(|b| b.as_str()).ok_or_else(|| format!("Internal error while building rss feed: metadata does not contain `body`: {:#?}", &map))?.to_string()
                 } else {
                     String::new()
-                }
+                })
             })),
-        );
+        )?;
+        Ok(())
     })
 }

@@ -37,7 +37,7 @@ use super::*;
 ///
 /// `Compiler`s' only obligation is transforming the contents of the given file `path` into a
 /// `String` by adding it to the metadata map with the key `body`.
-pub type Compiler = Box<dyn Fn(&mut State, &Path) -> Value>;
+pub type Compiler = Box<dyn Fn(&mut State, &Path) -> Result<Value>>;
 
 pub use pandoc::pandoc;
 mod pandoc {
@@ -52,7 +52,7 @@ mod pandoc {
                 .args(&["-t", "json"])
                 .arg(&path)
                 .output()
-                .expect("failed to execute pandoc");
+                .map_err(|err| format!("failed to execute pandoc: {}", err))?;
             let pandoc_json: PandocJsonOutput =
                 serde_json::from_str(&String::from_utf8_lossy(&metadata.stdout))
                     .unwrap_or_default();
@@ -67,12 +67,12 @@ mod pandoc {
             let output = Command::new("pandoc")
                 .arg(&path)
                 .output()
-                .expect("failed to execute pandoc");
+                .map_err(|err| format!("failed to execute pandoc: {}", err))?;
             metadata_map.insert(
                 "body".to_string(),
                 Value::String(String::from_utf8_lossy(&output.stdout).to_string()),
             );
-            Value::Object(metadata_map)
+            Ok(Value::Object(metadata_map))
         })
     }
 
@@ -247,6 +247,11 @@ mod rss {
 </rss>"#;
     pub fn rss_feed(snapshot_name: String, configuration: RssItem) -> Compiler {
         Box::new(move |state: &mut State, dest_path: &Path| {
+            if !state.snapshots.contains_key(&snapshot_name) {
+                // No posts configured/found
+                Err(format!("There are no snapshots with key `{}`, is the source rule empty (ie producing no items) or have you typed the name wrong?", &snapshot_name))?;
+            }
+
             let snapshot = &state.snapshots[&snapshot_name];
             let mut rss_items = Vec::with_capacity(snapshot.len());
             for artifact in snapshot.iter() {
@@ -284,21 +289,19 @@ mod rss {
             let mut handlebars = Handlebars::new();
             handlebars.register_helper("include", Box::new(include_helper));
 
-            let test = handlebars
-                .render_template(
-                    RSS_TEMPLATE,
-                    &json!({ "items": rss_items, "config": configuration, "path": dest_path }),
-                )
-                .unwrap();
-            json!({ "body": test })
+            let test = handlebars.render_template(
+                RSS_TEMPLATE,
+                &json!({ "items": rss_items, "config": configuration, "path": dest_path }),
+            )?;
+            Ok(json!({ "body": test }))
         })
     }
 }
 
 pub fn compiler_seq(compiler_a: Compiler, compiler_b: Compiler) -> Compiler {
     Box::new(move |state: &mut State, path: &Path| {
-        let a = compiler_a(state, &path);
-        let b = compiler_b(state, &path);
+        let a = compiler_a(state, &path)?;
+        let b = compiler_b(state, &path)?;
         let a = match (a, b) {
             (Value::Object(mut map_a), Value::Object(map_b)) => {
                 map_a.extend(map_b.into_iter());
@@ -306,6 +309,6 @@ pub fn compiler_seq(compiler_a: Compiler, compiler_b: Compiler) -> Compiler {
             }
             (a, _) => a,
         };
-        a
+        Ok(a)
     })
 }

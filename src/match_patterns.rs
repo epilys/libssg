@@ -50,6 +50,7 @@ impl MatchPattern {
     }
 }
 
+#[derive(Debug)]
 pub struct MatchPathIter(MatchPattern, Vec<fs::ReadDir>);
 
 impl Iterator for MatchPathIter {

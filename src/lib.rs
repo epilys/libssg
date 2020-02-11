@@ -30,6 +30,8 @@ use std::process::Command;
 use std::{env, fs};
 pub use uuid::Uuid;
 
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
 mod route;
 pub use route::*;
 
@@ -63,28 +65,34 @@ pub struct State {
     build_actions: HashMap<PathBuf, BuildAction>,
     templates: Handlebars<'static>,
     output_dir: PathBuf,
+    current_dir: PathBuf,
+
+    err: Option<Box<dyn std::error::Error>>,
     force_generate: bool,
     verbosity: u8,
 }
 
 impl State {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         let mut templates = Handlebars::new();
         templates
             .register_templates_directory("", "./templates")
-            .expect("Could not find templates/ dir");
+            .map_err(|_| "Could not find templates/ dir")?;
         templates.register_helper("include", Box::new(include_helper));
         match fs::create_dir(&Path::new("./_site/")) {
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
-            err => err.unwrap(),
+            err => err?,
         }
-        let output_dir = PathBuf::from("./_site/").canonicalize().unwrap();
-        State {
+        let output_dir = PathBuf::from("./_site/").canonicalize()?;
+        let current_dir = env::current_dir()?;
+        Ok(State {
             templates,
             output_dir,
+            current_dir,
             artifacts: Default::default(),
             build_actions: Default::default(),
 
+            err: None,
             snapshots: Default::default(),
             force_generate: env::var("FORCE").is_ok(),
             verbosity: env::var("VERBOSITY")
@@ -92,7 +100,7 @@ impl State {
                 .as_ref()
                 .and_then(|v| u8::from_str_radix(v, 10).ok())
                 .unwrap_or(1),
-        }
+        })
     }
 
     pub fn set_force_generate(&mut self, force_generate: bool) -> &mut Self {
@@ -123,7 +131,7 @@ impl State {
 
     /// Check if `dest`'s mtime is older than `resource`'s.
     pub fn check_mtime(&mut self, dest: &Path, resource: &Path) -> bool {
-        let resource = env::current_dir().unwrap().join(resource);
+        let resource = self.current_dir.as_path().join(resource);
         if self.force_generate {
             return true;
         }
@@ -205,13 +213,13 @@ impl State {
         resource: PathBuf,
         compiler: &Compiler,
         renderer: Renderer,
-    ) -> Uuid {
+    ) -> Result<Uuid> {
         let resource = resource
             .strip_prefix(&self.output_dir().parent().unwrap())
             .unwrap_or(&resource)
             .to_path_buf();
         let uuid = uuid_from_path(&resource);
-        let metadata = compiler(self, &resource);
+        let metadata = compiler(self, &resource)?;
         if self.check_mtime(&dest, &resource) || renderer.check_mtime(self, &dest) {
             if self.verbosity > 0 {
                 print!(
@@ -257,27 +265,41 @@ impl State {
                 },
             );
         }
-        uuid
+        Ok(uuid)
     }
 
     pub fn then(&mut self, rule: Rule) -> &mut Self {
-        rule(self);
+        if self.err.is_none() {
+            if let Err(err) = rule(self) {
+                self.err = Some(err);
+            }
+        }
         self
     }
 
-    pub fn templates_render(&self, template_path: &'static str, context: &Value) -> String {
+    pub fn templates_render(&self, template_path: &'static str, context: &Value) -> Result<String> {
         let template = Path::new(template_path).strip_prefix("templates/").unwrap();
         self.templates
             .render(&template.display().to_string(), context)
-            .unwrap()
+            .map_err(|err| {
+                format!(
+                    "Encountered error when trying to render with template `{}`: {}",
+                    err, template_path
+                )
+                .into()
+            })
     }
 
-    pub fn finish(&mut self) {
+    pub fn finish(&mut self) -> Result<()> {
+        if let Some(err) = self.err.take() {
+            Err(err)?;
+        }
+
         if self.build_actions.is_empty() {
             println!(r#"Nothing to be generated. This might happen if:
 - You haven't added any rules.
 - You either haven't made any changes to your source files or they weren't detected (might be a bug). Rerun with $FORCE environmental variable set to ignore mtimes and force generation. Set $VERBOSITY to greater than 1 to get more messages."#);
-            return;
+            return Ok(());
         }
         let fs_depth = self.output_dir.components().count();
         if self.verbosity > 0 {
@@ -289,19 +311,16 @@ impl State {
             let mut metadata = artifact.metadata.clone();
             let contents = match action.to {
                 Renderer::None => None,
-                renderer => Some(renderer.render(self, &mut metadata)),
+                renderer => Some(renderer.render(self, &mut metadata)?),
             };
             if path.is_absolute() {
-                path = path
-                    .strip_prefix(&self.output_dir.parent().unwrap())
-                    .unwrap()
-                    .to_path_buf();
+                path = path.strip_prefix(&self.current_dir)?.to_path_buf();
             }
 
             self.output_dir.push(&path);
             match fs::create_dir_all(self.output_dir.parent().unwrap()) {
                 Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
-                err => err.unwrap(),
+                err => err?,
             }
             if let Some(contents) = contents {
                 use std::io::prelude::*;
@@ -313,8 +332,8 @@ impl State {
                     }
                     println!("");
                 }
-                let mut file = fs::File::create(&self.output_dir).unwrap();
-                file.write_all(contents.as_bytes()).unwrap();
+                let mut file = fs::File::create(&self.output_dir)?;
+                file.write_all(contents.as_bytes())?;
             } else {
                 let src_path = &self.artifacts[&action.src].resource;
                 if self.verbosity > 0 {
@@ -326,16 +345,21 @@ impl State {
                 }
                 assert!(src_path != &self.output_dir);
 
-                fs::copy(src_path, &self.output_dir).unwrap();
+                fs::copy(src_path, &self.output_dir)?;
             }
             for _ in fs_depth..self.output_dir.components().count() {
                 self.output_dir.pop();
             }
         }
+        Ok(())
     }
 
     pub fn output_dir(&self) -> &Path {
         &self.output_dir
+    }
+
+    pub fn current_dir(&self) -> &Path {
+        &self.current_dir
     }
 }
 
