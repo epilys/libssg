@@ -19,6 +19,8 @@
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
 
+//! Match patterns for files with regexps or literals.
+
 use super::*;
 use std::env;
 
@@ -41,6 +43,7 @@ impl<S: AsRef<str>> From<S> for MatchPattern {
 }
 
 impl MatchPattern {
+    /// Returns iterator of [`std::fs::DirEntry`]s for every matching entry.
     pub fn list(self) -> MatchPathIter {
         let current_dir = env::current_dir().unwrap();
         MatchPathIter(
@@ -50,6 +53,7 @@ impl MatchPattern {
     }
 }
 
+/// Iterator of [`std::fs::DirEntry`]s for every matching entry.
 #[derive(Debug)]
 pub struct MatchPathIter(MatchPattern, Vec<fs::ReadDir>);
 

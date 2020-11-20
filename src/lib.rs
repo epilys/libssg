@@ -19,6 +19,86 @@
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
 
+//! ## How to use
+//! `libssg` is meant to be used as a tool for a custom site generator binary. Common tasks in
+//! static site generation are provided as tools for you to combine them as you see fit in your own
+//! site.
+//!
+//! ### Your binary's structure
+//! In the main function of your binary, you will create a [`State`](State), add a bunch of
+//! [`Rule`s](Rule) to be performed sequentially and then call [`State::finish`](State::finish) to
+//! perform the necessary rendering. Files that didn't change *should* be cached instead of being
+//! regenerated. By executing the binary, the generated site should be up to date with the source
+//! content.
+//!
+//! An example binary and project structure:
+//!
+//!```no_run
+//!use libssg::*;
+//!/*
+//! * $ tree
+//! * .
+//! * ├── Cargo.toml etc
+//! * ├── src
+//! * │   └── main.rs
+//! * ├── css
+//! * │   └── *.css
+//! * ├── images
+//! * │   └── *.png
+//! * ├── index.md
+//! * ├── posts
+//! * │   └── *.md
+//! * ├── _site
+//! * │   ├── css
+//! * │   │   └── *.css
+//! * │   ├── images
+//! * │   │   └── *.png
+//! * │   ├── index.html
+//! * │   ├── posts
+//! * │   │   └── *.html
+//! * └── templates
+//! *     ├── default.hbs
+//! *     └── post.hbs
+//!*/
+//!
+//!
+//!fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!    let mut state = State::new()?;
+//!    state
+//!        .then(match_pattern(
+//!            "^posts/*",
+//!            Route::SetExtension("html"),
+//!               Renderer::Pipeline(vec![
+//!                   Renderer::LoadAndApplyTemplate("templates/post.hbs"),
+//!                   Renderer::LoadAndApplyTemplate("templates/default.hbs"),
+//!               ]),
+//!               pandoc(),
+//!        ))
+//!        .then(match_pattern(
+//!            "index.md",
+//!            Route::SetExtension("html"),
+//!            Renderer::LoadAndApplyTemplate("templates/default.hbs"),
+//!            pandoc(),
+//!        ))
+//!        .then(copy("^images/*", Route::Id))
+//!        .then(copy("^css/*", Route::Id))
+//!        .finish()?;
+//!    Ok(())
+//!}
+//!```
+//!
+//!`cargo run` and the output is saved at `./_site/`.
+//!
+//! ## Runtime configuration
+//! `libssg` uses some environment variables for configuration but you can also customise this in
+//! your binary. By default the following variables are read:
+//! - `FORCE` if set forces rendering of all resources even if they are cached.
+//! - `VERBOSITY` gets values from `0` up to `5` to change output verbosity.
+//!
+//!
+//! ## Snapshots
+//! Rendered content can be saved in named snapshots. This allows you reusing rendered content in
+//! later steps, for example generating an RSS feed with generated post content.
 use handlebars;
 use handlebars::Handlebars;
 use regex;
@@ -32,22 +112,22 @@ pub use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-mod route;
+pub mod route;
 pub use route::*;
 
-mod match_patterns;
+pub mod match_patterns;
 pub use match_patterns::*;
 
-mod rules;
+pub mod rules;
 pub use rules::*;
 
-mod helpers;
+pub mod helpers;
 pub use helpers::*;
 
-mod compilers;
+pub mod compilers;
 pub use compilers::*;
 
-mod renderers;
+pub mod renderers;
 pub use renderers::*;
 
 #[cfg(test)]
@@ -58,6 +138,7 @@ mod tests {
     }
 }
 
+///The state of site render.
 #[derive(Debug)]
 pub struct State {
     snapshots: HashMap<String, Vec<Uuid>>,
@@ -73,6 +154,7 @@ pub struct State {
 }
 
 impl State {
+    /// Create new state.
     pub fn new() -> Result<Self> {
         let mut templates = Handlebars::new();
         templates
@@ -103,28 +185,34 @@ impl State {
         })
     }
 
+    /// Sets `force_generate` option.
     pub fn set_force_generate(&mut self, force_generate: bool) -> &mut Self {
         self.force_generate = force_generate;
         self
     }
 
+    /// Sets `verbosity` option.
     pub fn set_verbosity(&mut self, verbosity: u8) -> &mut Self {
         self.verbosity = verbosity;
         self
     }
 
+    /// Returns `verbosity` option.
     pub fn verbosity(&self) -> u8 {
         self.verbosity
     }
 
+    /// Returns current state of build artifacts.
     pub fn artifacts(&self) -> &HashMap<Uuid, BuildArtifact> {
         &self.artifacts
     }
 
+    /// Returns current state of snapshots.
     pub fn snapshots(&self) -> &HashMap<String, Vec<Uuid>> {
         &self.snapshots
     }
 
+    /// Adds an artifact to a snapshot.
     pub fn add_to_snapshot(&mut self, key: String, artifact: Uuid) {
         self.snapshots.entry(key).or_default().push(artifact)
     }
@@ -165,6 +253,7 @@ impl State {
         ret
     }
 
+    /// Adds a build action of copying a resource to a destination, unchanged.
     pub fn copy_page(&mut self, resource: PathBuf, dest: PathBuf) -> Uuid {
         let uuid = uuid_from_path(&resource);
         if self.check_mtime(&dest, &resource) {
@@ -207,6 +296,7 @@ impl State {
         uuid
     }
 
+    /// Adds a build action with a custom [`Compiler`](crate::compilers::Compiler).
     pub fn add_page(
         &mut self,
         dest: PathBuf,
@@ -268,6 +358,7 @@ impl State {
         Ok(uuid)
     }
 
+    /// Add a new [`Rule`](Rule).
     pub fn then(&mut self, rule: Rule) -> &mut Self {
         if self.err.is_none() {
             if let Err(err) = rule(self) {
@@ -277,6 +368,7 @@ impl State {
         self
     }
 
+    /// Render a context with a specific template and return it.
     pub fn templates_render(&self, template_path: &'static str, context: &Value) -> Result<String> {
         let template = Path::new(template_path).strip_prefix("templates/").unwrap();
         self.templates
@@ -290,15 +382,18 @@ impl State {
             })
     }
 
+    /// Perform all build actions.
     pub fn finish(&mut self) -> Result<()> {
         if let Some(err) = self.err.take() {
             Err(err)?;
         }
 
         if self.build_actions.is_empty() {
-            println!(r#"Nothing to be generated. This might happen if:
+            println!(
+                r#"Nothing to be generated. This might happen if:
 - You haven't added any rules.
-- You either haven't made any changes to your source files or they weren't detected (might be a bug). Rerun with $FORCE environmental variable set to ignore mtimes and force generation. Set $VERBOSITY to greater than 1 to get more messages."#);
+- You either haven't made any changes to your source files or they weren't detected (might be a bug). Rerun with $FORCE environmental variable set to ignore mtimes and force generation. Set $VERBOSITY to greater than 1 to get more messages."#
+            );
             return Ok(());
         }
         let fs_depth = self.output_dir.components().count();
@@ -354,21 +449,24 @@ impl State {
         Ok(())
     }
 
+    /// Return `output_dir`.
     pub fn output_dir(&self) -> &Path {
         &self.output_dir
     }
 
+    /// Return `current_dir`.
     pub fn current_dir(&self) -> &Path {
         &self.current_dir
     }
 }
 
+/// An artifact generated during the build process.
 pub struct BuildArtifact {
-    uuid: Uuid,
-    path: PathBuf,
-    resource: PathBuf,
-    metadata: Value,
-    contents: String,
+    pub uuid: Uuid,
+    pub path: PathBuf,
+    pub resource: PathBuf,
+    pub metadata: Value,
+    pub contents: String,
 }
 
 impl std::fmt::Debug for BuildArtifact {
@@ -384,12 +482,15 @@ impl std::fmt::Debug for BuildArtifact {
     }
 }
 
+/// Build actions to be performed in the finish stage.
 #[derive(Debug)]
 pub struct BuildAction {
     src: Uuid,
     to: Renderer,
 }
 
+/// Create an [`Uuid`](uuid::Uuid) from a [Path] using
+/// [`Uuid::NAMESPACE_OID`](uuid::Uuid::NAMESPACE_OID).
 pub fn uuid_from_path(path: &Path) -> Uuid {
     Uuid::new_v3(&Uuid::NAMESPACE_OID, path.as_os_str().as_bytes())
 }

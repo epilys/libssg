@@ -19,10 +19,13 @@
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
 
+//![Renderer]s are template rendering pipelines used by [Compiler](crate::compilers::Compiler)
+
 use super::{Result, State};
 use serde_json::Value;
 use std::path::Path;
 
+/// Simple trait to clone boxed closures.
 pub trait BFn: Fn(&mut Value) -> Result<String> {
     fn clone_boxed(&self) -> Box<dyn BFn>;
 }

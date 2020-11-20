@@ -19,10 +19,12 @@
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
 
+//![`Compiler`](Compiler)s are functions or closures that transform resource files (think stylesheets, text in markdown, etc) to something.
+
 use super::*;
 
-///`Compiler`s are functions or closures that transform resource files (think stylesheets, text in markdown, etc) to
-/// something. A compiler that uses `pandoc` is provided, it expects a pandoc markdown file with
+///[`Compiler`](Compiler)s are functions or closures that transform resource files (think stylesheets, text in markdown, etc) to
+/// something. A compiler that uses `pandoc` is provided in [crate::pandoc], it expects a pandoc markdown file with
 /// optional metadata in the preamble like so:
 ///
 /// ```text
@@ -35,12 +37,12 @@ use super::*;
 /// Lorem ipsum.
 /// ```
 ///
-/// `Compiler`s' only obligation is transforming the contents of the given file `path` into a
-/// `String` by adding it to the metadata map with the key `body`.
+/// [`Compiler`](Compiler)s' only obligation is transforming the contents of the given file `path` into a
+/// [String] by adding it to the metadata map with the key `body`.
 pub type Compiler = Box<dyn Fn(&mut State, &Path) -> Result<Value>>;
 
 pub use pandoc::pandoc;
-mod pandoc {
+pub mod pandoc {
     use super::*;
     use serde::{self, Deserialize};
     use serde_json;
@@ -210,7 +212,7 @@ mod pandoc {
 
 pub use rss::*;
 
-mod rss {
+pub mod rss {
     use super::*;
     use serde::{self, Serialize};
     use serde_json::json;

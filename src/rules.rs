@@ -19,11 +19,14 @@
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
 
+//! [`Rule`](Rule)s are steps to perform in the generation process, called from the main function in your
+//! application.
+
 use super::*;
 use std::env;
 
-/// `Rule`s are generation steps, that is, separate steps in the generation process. They can
-/// alter `State` however they like.
+/// [`Rule`](Rule)s are generation steps, that is, separate steps in the generation process. They can
+/// alter [`State`](State) however they like.
 pub type Rule = Box<dyn FnOnce(&mut State) -> Result<()>>;
 
 /// Find matches from current directory and potentially descendants for `pattern`. For each
@@ -70,6 +73,7 @@ pub fn match_pattern<P: Into<MatchPattern>>(
     })
 }
 
+/// Create a path with custom [`Compiler`](crate::compilers::Compiler).
 pub fn create(path: PathBuf, compiler: Compiler) -> Rule {
     Box::new(move |state: &mut State| {
         state.add_page(path.clone(), path.clone(), &compiler, Renderer::None)?;
@@ -102,24 +106,6 @@ pub fn copy<P: Into<MatchPattern>>(pattern: P, route: Route) -> Rule {
                 );
             }
         }
-        Ok(())
-    })
-}
-
-pub fn build_rss_feed(path: PathBuf, compiler: Compiler) -> Rule {
-    Box::new(move |state: &mut State| {
-        state.add_page(
-            path.clone(),
-            path.clone(),
-            &compiler,
-            Renderer::Custom(Box::new(|metadata| {
-                Ok(if let Value::Object(ref map) = metadata {
-                    map.get("body").and_then(|b| b.as_str()).ok_or_else(|| format!("Internal error while building rss feed: metadata does not contain `body`: {:#?}", &map))?.to_string()
-                } else {
-                    String::new()
-                })
-            })),
-        )?;
         Ok(())
     })
 }

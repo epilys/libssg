@@ -19,6 +19,8 @@
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
 
+//! Helper functions.
+
 use handlebars::{Context, Handlebars, Helper, JsonRender, Output, RenderContext, RenderError};
 
 /// Include HTML string without escaping.

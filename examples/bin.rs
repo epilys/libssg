@@ -72,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             libssg::pandoc(),
         ))
         .then(libssg::copy("^css/*", libssg::Route::Id))
-        .then(libssg::build_rss_feed(
+        .then(build_rss_feed(
             "rss.xml".into(),
             libssg::rss_feed(
                 "main-rss-feed".into(),
@@ -88,4 +88,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ))
         .finish()?;
     Ok(())
+}
+
+fn build_rss_feed(path: std::path::PathBuf, compiler: libssg::Compiler) -> libssg::Rule {
+    Box::new(move |state: &mut libssg::State| {
+        state.add_page(
+            path.clone(),
+            path.clone(),
+            &compiler,
+            libssg::Renderer::Custom(Box::new(|metadata| {
+                Ok(if let libssg::Value::Object(ref map) = metadata {
+                    map.get("body").and_then(|b| b.as_str()).ok_or_else(|| format!("Internal error while building rss feed: metadata does not contain `body`: {:#?}", &map))?.to_string()
+                } else {
+                    String::new()
+                })
+            })),
+        )?;
+        Ok(())
+    })
 }

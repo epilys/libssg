@@ -18,6 +18,9 @@
  * You should have received a copy of the GNU General Public License
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
+
+//!Mapping rendered files to relative URLs.
+
 use std::path::{Path, PathBuf};
 
 /// Explains how to map the relative file system path to a relative URL.
