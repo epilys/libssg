@@ -39,7 +39,7 @@ use super::*;
 ///
 /// [`Compiler`](Compiler)s' only obligation is transforming the contents of the given file `path` into a
 /// [String] by adding it to the metadata map with the key `body`.
-pub type Compiler = Box<dyn Fn(&mut State, &Path) -> Result<Value>>;
+pub type Compiler = Box<dyn Fn(&mut State, &Path) -> Result<Map<String, Value>>>;
 
 pub use pandoc::pandoc;
 pub mod pandoc {
@@ -74,7 +74,7 @@ pub mod pandoc {
                 "body".to_string(),
                 Value::String(String::from_utf8_lossy(&output.stdout).to_string()),
             );
-            Ok(Value::Object(metadata_map))
+            Ok(metadata_map)
         })
     }
 
@@ -257,36 +257,32 @@ pub mod rss {
             let snapshot = &state.snapshots[&snapshot_name];
             let mut rss_items = Vec::with_capacity(snapshot.len());
             for artifact in snapshot.iter() {
-                if let Value::Object(ref map) = &state.artifacts[&artifact].metadata {
-                    macro_rules! get_property {
-                        ($key:literal, $default:expr) => {
-                            map.get($key)
-                                .and_then(|t| {
-                                    if let Value::String(ref var) = t {
-                                        Some(var.to_string())
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .unwrap_or_else(|| $default)
-                        };
-                    }
-                    rss_items.push(RssItem {
-                        title: get_property!("title", format!("No title, uuid: {}", artifact)),
-                        description: get_property!("body", String::new()),
-                        link: format!(
-                            "{}/{}",
-                            &configuration.link,
-                            &state.artifacts[&artifact].path.display()
-                        ),
-                        last_build_date: String::new(),
-                        pub_date: get_property!(
-                            "date",
-                            "Thu, 01 Jan 1970 00:00:00 +0000".to_string()
-                        ),
-                        ttl: 1800,
-                    });
+                let map = &state.artifacts[&artifact].metadata;
+                macro_rules! get_property {
+                    ($key:literal, $default:expr) => {
+                        map.get($key)
+                            .and_then(|t| {
+                                if let Value::String(ref var) = t {
+                                    Some(var.to_string())
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_else(|| $default)
+                    };
                 }
+                rss_items.push(RssItem {
+                    title: get_property!("title", format!("No title, uuid: {}", artifact)),
+                    description: get_property!("body", String::new()),
+                    link: format!(
+                        "{}/{}",
+                        &configuration.link,
+                        &state.artifacts[&artifact].path.display()
+                    ),
+                    last_build_date: String::new(),
+                    pub_date: get_property!("date", "Thu, 01 Jan 1970 00:00:00 +0000".to_string()),
+                    ttl: 1800,
+                });
             }
             let mut handlebars = Handlebars::new();
             handlebars.register_helper("include", Box::new(include_helper));
@@ -295,22 +291,18 @@ pub mod rss {
                 RSS_TEMPLATE,
                 &json!({ "items": rss_items, "config": configuration, "path": dest_path }),
             )?;
-            Ok(json!({ "body": test }))
+            let mut metadata_map: Map<String, Value> = Map::new();
+            metadata_map.insert("body".into(), test.into());
+            Ok(metadata_map)
         })
     }
 }
 
 pub fn compiler_seq(compiler_a: Compiler, compiler_b: Compiler) -> Compiler {
     Box::new(move |state: &mut State, path: &Path| {
-        let a = compiler_a(state, &path)?;
+        let mut a = compiler_a(state, &path)?;
         let b = compiler_b(state, &path)?;
-        let a = match (a, b) {
-            (Value::Object(mut map_a), Value::Object(map_b)) => {
-                map_a.extend(map_b.into_iter());
-                Value::Object(map_a)
-            }
-            (a, _) => a,
-        };
+        a.extend(b.into_iter());
         Ok(a)
     })
 }

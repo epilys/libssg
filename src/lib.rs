@@ -99,10 +99,11 @@
 //! ## Snapshots
 //! Rendered content can be saved in named snapshots. This allows you reusing rendered content in
 //! later steps, for example generating an RSS feed with generated post content.
+pub use chrono;
 use handlebars;
 use handlebars::Handlebars;
 use regex;
-pub use serde_json::Value;
+pub use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -161,6 +162,7 @@ impl State {
             .register_templates_directory("", "./templates")
             .map_err(|_| "Could not find templates/ dir")?;
         templates.register_helper("include", Box::new(include_helper));
+        templates.register_helper("date_fmt", Box::new(date_fmt));
         match fs::create_dir(&Path::new("./_site/")) {
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
             err => err?,
@@ -369,7 +371,11 @@ impl State {
     }
 
     /// Render a context with a specific template and return it.
-    pub fn templates_render(&self, template_path: &'static str, context: &Value) -> Result<String> {
+    pub fn templates_render(
+        &self,
+        template_path: &'static str,
+        context: &Map<String, Value>,
+    ) -> Result<String> {
         let template = Path::new(template_path).strip_prefix("templates/").unwrap();
         self.templates
             .render(&template.display().to_string(), context)
@@ -465,7 +471,7 @@ pub struct BuildArtifact {
     pub uuid: Uuid,
     pub path: PathBuf,
     pub resource: PathBuf,
-    pub metadata: Value,
+    pub metadata: Map<String, Value>,
     pub contents: String,
 }
 

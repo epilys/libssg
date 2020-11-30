@@ -22,17 +22,17 @@
 //![Renderer]s are template rendering pipelines used by [Compiler](crate::compilers::Compiler)
 
 use super::{Result, State};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::path::Path;
 
 /// Simple trait to clone boxed closures.
-pub trait BFn: Fn(&mut Value) -> Result<String> {
+pub trait BFn: Fn(&mut State, &mut Map<String, Value>) -> Result<String> {
     fn clone_boxed(&self) -> Box<dyn BFn>;
 }
 
 impl<T> BFn for T
 where
-    T: 'static + Clone + Fn(&mut Value) -> Result<String>,
+    T: 'static + Clone + Fn(&mut State, &mut Map<String, Value>) -> Result<String>,
 {
     fn clone_boxed(&self) -> Box<dyn BFn> {
         Box::new(self.clone())
@@ -81,7 +81,7 @@ impl Renderer {
         }
     }
 
-    pub fn render(&self, state: &mut State, context: &mut Value) -> Result<String> {
+    pub fn render(&self, state: &mut State, context: &mut Map<String, Value>) -> Result<String> {
         Ok(match self {
             Renderer::LoadAndApplyTemplate(ref path) => state.templates_render(path, context)?,
             Renderer::Pipeline(ref list) => {
@@ -90,13 +90,13 @@ impl Renderer {
                     let new_body = stage.render(state, context)?;
                     if iter.peek().is_none() {
                         return Ok(new_body);
-                    } else if let Value::Object(ref mut map) = context {
-                        map.insert("body".to_string(), Value::String(new_body));
+                    } else {
+                        context.insert("body".to_string(), Value::String(new_body));
                     }
                 }
                 String::new()
             }
-            Renderer::Custom(ref c) => c(context)?,
+            Renderer::Custom(ref c) => c(state, context)?,
             Renderer::None => String::new(),
         })
     }

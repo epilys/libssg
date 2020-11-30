@@ -74,9 +74,9 @@ pub fn match_pattern<P: Into<MatchPattern>>(
 }
 
 /// Create a path with custom [`Compiler`](crate::compilers::Compiler).
-pub fn create(path: PathBuf, compiler: Compiler) -> Rule {
+pub fn create(path: PathBuf, renderer: Renderer, compiler: Compiler) -> Rule {
     Box::new(move |state: &mut State| {
-        state.add_page(path.clone(), path.clone(), &compiler, Renderer::None)?;
+        state.add_page(path.clone(), path.clone(), &compiler, renderer)?;
         Ok(())
     })
 }

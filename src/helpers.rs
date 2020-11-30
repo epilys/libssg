@@ -37,3 +37,46 @@ pub fn include_helper(
     out.write(&param.value().render())?;
     Ok(())
 }
+
+/// Format timestamp to date with a chrono format string
+/// Usage: `{{ date_fmt date "%Y-%m-%d" }}`
+pub fn date_fmt(
+    h: &Helper,
+    _: &Handlebars,
+    _: &Context,
+    _: &mut RenderContext,
+    out: &mut dyn Output,
+) -> Result<(), RenderError> {
+    use chrono::TimeZone;
+    let fmt_string = h
+        .param(1)
+        .ok_or(RenderError::new(
+            "Format string as second parameter is required for date_fmt helper.",
+        ))?
+        .value()
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            RenderError::new(
+                "Second parameter format string must be of type string for date_fmt helper.",
+            )
+        })?;
+
+    let date_s: i64 = match h
+        .param(0)
+        .ok_or(RenderError::new(
+            "Date as first parameter is required for date_fmt helper.",
+        ))?
+        .value()
+    {
+        serde_json::Value::String(s) => chrono::Local
+            .datetime_from_str(&s, "%Y-%m-%d %H:%M:%S")
+            .unwrap()
+            .timestamp(),
+        serde_json::Value::Number(num) if num.as_i64().is_some() => num.as_i64().unwrap(),
+        _ => panic!(),
+    };
+    let date = chrono::Local.timestamp(date_s, 0);
+    out.write(&date.format(&fmt_string).to_string())?;
+    Ok(())
+}
