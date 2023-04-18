@@ -19,6 +19,35 @@
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#![deny(
+    //missing_docs,
+    rustdoc::broken_intra_doc_links,
+    /* groups */
+    clippy::correctness,
+    clippy::suspicious,
+    clippy::complexity,
+    clippy::perf,
+    clippy::style,
+    clippy::cargo,
+    clippy::nursery,
+    /* restriction */
+    clippy::dbg_macro,
+    clippy::rc_buffer,
+    clippy::as_underscore,
+    clippy::assertions_on_result_states,
+    /* pedantic */
+    clippy::cast_lossless,
+    clippy::cast_possible_wrap,
+    clippy::ptr_as_ptr,
+    clippy::bool_to_int_with_if,
+    clippy::borrow_as_ptr,
+    clippy::case_sensitive_file_extension_comparisons,
+    clippy::cast_lossless,
+    clippy::cast_ptr_alignment,
+    clippy::naive_bytecount
+)]
+#![allow(clippy::multiple_crate_versions, clippy::missing_const_for_fn)]
+
 //! ## How to use
 //! `libssg` is meant to be used as a tool for a custom site generator binary. Common tasks in
 //! static site generation are provided as tools for you to combine them as you see fit in your own
