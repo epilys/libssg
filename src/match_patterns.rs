@@ -35,9 +35,9 @@ pub enum MatchPattern {
 impl<S: AsRef<str>> From<S> for MatchPattern {
     fn from(from: S) -> Self {
         if let Ok(r) = regex::Regex::new(from.as_ref()) {
-            MatchPattern::Regex(r)
+            Self::Regex(r)
         } else {
-            MatchPattern::Literal(from.as_ref().to_string())
+            Self::Literal(from.as_ref().to_string())
         }
     }
 }
@@ -112,7 +112,7 @@ impl Iterator for MatchPathIter {
 pub struct MatchPatternIter(Option<MatchPattern>);
 
 impl IntoIterator for MatchPattern {
-    type Item = MatchPattern;
+    type Item = Self;
     type IntoIter = MatchPatternIter;
     fn into_iter(self) -> Self::IntoIter {
         MatchPatternIter(Some(self))

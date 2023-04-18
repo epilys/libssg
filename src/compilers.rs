@@ -51,8 +51,8 @@ pub mod pandoc {
     pub fn pandoc() -> Compiler {
         Box::new(|state: &mut State, path: &Path| {
             let metadata = Command::new("pandoc")
-                .args(&["-t", "json"])
-                .arg(&path)
+                .args(["-t", "json"])
+                .arg(path)
                 .output()
                 .map_err(|err| format!("failed to execute pandoc: {}", err))?;
             let pandoc_json: PandocJsonOutput =
@@ -67,7 +67,7 @@ pub mod pandoc {
                 );
             }
             let output = Command::new("pandoc")
-                .arg(&path)
+                .arg(path)
                 .output()
                 .map_err(|err| format!("failed to execute pandoc: {}", err))?;
             metadata_map.insert(
@@ -82,7 +82,7 @@ pub mod pandoc {
         let meta = output.meta;
 
         meta.into_iter()
-            .map(|(key, metaval)| (key.replace("-", "_"), metaval.into()))
+            .map(|(key, metaval)| (key.replace('-', "_"), metaval.into()))
             .collect::<_>()
     }
 
@@ -105,31 +105,31 @@ pub mod pandoc {
         MetaBlocks(Value),
     }
 
-    impl Into<Value> for PandocMetaValue {
-        fn into(self) -> Value {
+    impl From<PandocMetaValue> for Value {
+        fn from(val: PandocMetaValue) -> Self {
             use PandocMetaValue::*;
-            match self {
-                MetaMap(map) => Value::Object(
+            match val {
+                MetaMap(map) => Self::Object(
                     map.into_iter()
-                        .map(|(key, metaval)| (key.clone(), metaval.into()))
+                        .map(|(key, metaval)| (key, metaval.into()))
                         .collect(),
                 ),
-                MetaList(list) => Value::Array(
+                MetaList(list) => Self::Array(
                     list.into_iter()
                         .map(|metaval| metaval.into())
-                        .collect::<Vec<Value>>(),
+                        .collect::<Vec<Self>>(),
                 ),
-                MetaBool(v) => Value::Bool(v),
-                MetaString(v) => Value::String(v),
-                MetaInlines(inlines_list) => Value::String(inlines_list.into_iter().fold(
+                MetaBool(v) => Self::Bool(v),
+                MetaString(v) => Self::String(v),
+                MetaInlines(inlines_list) => Self::String(inlines_list.into_iter().fold(
                     String::new(),
                     |mut acc, inline| {
                         let inline: String = inline.into();
-                        acc.extend(inline.chars());
+                        acc.push_str(&inline);
                         acc
                     },
                 )),
-                MetaBlocks(_) => Value::String(String::new()),
+                MetaBlocks(_) => Self::String(String::new()),
             }
         }
     }
@@ -158,53 +158,53 @@ pub mod pandoc {
         Span(Value),
     }
 
-    impl Into<String> for PandocMetaInline {
-        fn into(self) -> String {
+    impl From<PandocMetaInline> for String {
+        fn from(val: PandocMetaInline) -> Self {
             use PandocMetaInline::*;
-            match self {
+            match val {
                 Str(inner) => inner,
-                Emph(list) => list.into_iter().fold(String::new(), |mut acc, el| {
-                    let el: String = el.into();
-                    acc.extend(el.chars());
+                Emph(list) => list.into_iter().fold(Self::new(), |mut acc, el| {
+                    let el: Self = el.into();
+                    acc.push_str(&el);
                     acc
                 }),
-                Strong(list) => list.into_iter().fold(String::new(), |mut acc, el| {
-                    let el: String = el.into();
-                    acc.extend(el.chars());
+                Strong(list) => list.into_iter().fold(Self::new(), |mut acc, el| {
+                    let el: Self = el.into();
+                    acc.push_str(&el);
                     acc
                 }),
-                Space => String::from(" "),
-                SoftBreak => String::from("\n"),
-                LineBreak => String::from("\n"),
-                Strikeout(list) => list.into_iter().fold(String::new(), |mut acc, el| {
-                    let el: String = el.into();
-                    acc.extend(el.chars());
+                Space => Self::from(" "),
+                SoftBreak => Self::from("\n"),
+                LineBreak => Self::from("\n"),
+                Strikeout(list) => list.into_iter().fold(Self::new(), |mut acc, el| {
+                    let el: Self = el.into();
+                    acc.push_str(&el);
                     acc
                 }),
-                Superscript(list) => list.into_iter().fold(String::new(), |mut acc, el| {
-                    let el: String = el.into();
-                    acc.extend(el.chars());
+                Superscript(list) => list.into_iter().fold(Self::new(), |mut acc, el| {
+                    let el: Self = el.into();
+                    acc.push_str(&el);
                     acc
                 }),
-                Subscript(list) => list.into_iter().fold(String::new(), |mut acc, el| {
-                    let el: String = el.into();
-                    acc.extend(el.chars());
+                Subscript(list) => list.into_iter().fold(Self::new(), |mut acc, el| {
+                    let el: Self = el.into();
+                    acc.push_str(&el);
                     acc
                 }),
-                SmallCaps(list) => list.into_iter().fold(String::new(), |mut acc, el| {
-                    let el: String = el.into();
-                    acc.extend(el.chars());
+                SmallCaps(list) => list.into_iter().fold(Self::new(), |mut acc, el| {
+                    let el: Self = el.into();
+                    acc.push_str(&el);
                     acc
                 }),
-                Quoted(_) => String::new(),
-                Cite(_) => String::new(),
-                Code(_) => String::new(),
-                Math(_) => String::new(),
-                RawPandocMetaInline(_) => String::new(),
-                Link(_) => String::new(),
-                Image(_) => String::new(),
-                Note(_) => String::new(),
-                Span(_) => String::new(),
+                Quoted(_) => Self::new(),
+                Cite(_) => Self::new(),
+                Code(_) => Self::new(),
+                Math(_) => Self::new(),
+                RawPandocMetaInline(_) => Self::new(),
+                Link(_) => Self::new(),
+                Image(_) => Self::new(),
+                Note(_) => Self::new(),
+                Span(_) => Self::new(),
             }
         }
     }
@@ -215,7 +215,6 @@ pub use rss::*;
 pub mod rss {
     use super::*;
     use serde::{self, Serialize};
-    use serde_json::json;
 
     #[derive(Serialize)]
     pub struct RssItem {
@@ -227,7 +226,7 @@ pub mod rss {
         pub ttl: i32,
     }
 
-    const RSS_TEMPLATE: &'static str = r#"<?xml version="1.0" encoding="UTF-8" ?>
+    const RSS_TEMPLATE: &str = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
 <channel>
   <title>{{ config.title }}</title>
@@ -248,7 +247,7 @@ pub mod rss {
 </channel>
 </rss>"#;
     pub fn rss_feed(snapshot_name: String, configuration: RssItem) -> Compiler {
-        Box::new(move |state: &mut State, dest_path: &Path| {
+        Box::new(move |state: &mut State, _dest_path: &Path| {
             if !state.snapshots.contains_key(&snapshot_name) {
                 // No posts configured/found
                 Err(format!("There are no snapshots with key `{}`, is the source rule empty (ie producing no items) or have you typed the name wrong?", &snapshot_name))?;
@@ -257,7 +256,7 @@ pub mod rss {
             let snapshot = &state.snapshots[&snapshot_name];
             let mut rss_items = Vec::with_capacity(snapshot.len());
             for artifact in snapshot.iter() {
-                let map = &state.artifacts[&artifact].metadata;
+                let map = &state.artifacts[artifact].metadata;
                 macro_rules! get_property {
                     ($key:literal, $default:expr) => {
                         map.get($key)
@@ -277,7 +276,7 @@ pub mod rss {
                     link: format!(
                         "{}/{}",
                         &configuration.link,
-                        &state.artifacts[&artifact].path.display()
+                        &state.artifacts[artifact].path.display()
                     ),
                     last_build_date: String::new(),
                     pub_date: get_property!("date", "Thu, 01 Jan 1970 00:00:00 +0000".to_string()),
@@ -292,7 +291,7 @@ pub mod rss {
             //    &json!({ "items": rss_items, "config": configuration, "path": dest_path }),
             //)?;
             //metadata_map.insert("body".into(), test.into());
-            let mut metadata_map: Map<String, Value> = Map::new();
+            let metadata_map: Map<String, Value> = Map::new();
             Ok(metadata_map)
         })
     }
@@ -300,8 +299,8 @@ pub mod rss {
 
 pub fn compiler_seq(compiler_a: Compiler, compiler_b: Compiler) -> Compiler {
     Box::new(move |state: &mut State, path: &Path| {
-        let mut a = compiler_a(state, &path)?;
-        let b = compiler_b(state, &path)?;
+        let mut a = compiler_a(state, path)?;
+        let b = compiler_b(state, path)?;
         a.extend(b.into_iter());
         Ok(a)
     })

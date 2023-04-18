@@ -71,20 +71,19 @@ impl Renderer {
     /// than the destination.
     pub fn check_mtime(&self, state: &mut State, dest_path: &Path) -> bool {
         match self {
-            Renderer::LoadAndApplyTemplate(ref path) => {
-                state.check_mtime(dest_path, &Path::new(&format!("{}/{}",state.templates_dir.display(), path)))
-            }
-            Renderer::Pipeline(ref list) => list
-                .iter()
-                .fold(false, |acc, el| acc || el.check_mtime(state, dest_path)),
-            Renderer::None | Renderer::Custom(_) => true,
+            Self::LoadAndApplyTemplate(ref path) => state.check_mtime(
+                dest_path,
+                Path::new(&format!("{}/{}", state.templates_dir.display(), path)),
+            ),
+            Self::Pipeline(ref list) => list.iter().any(|el| el.check_mtime(state, dest_path)),
+            Self::None | Self::Custom(_) => true,
         }
     }
 
     pub fn render(&self, state: &mut State, context: &mut Map<String, Value>) -> Result<String> {
         Ok(match self {
-            Renderer::LoadAndApplyTemplate(ref path) => state.templates_render(path, context)?,
-            Renderer::Pipeline(ref list) => {
+            Self::LoadAndApplyTemplate(path) => state.templates_render(path, context)?,
+            Self::Pipeline(ref list) => {
                 let mut iter = list.iter().peekable();
                 while let Some(stage) = iter.next() {
                     let new_body = stage.render(state, context)?;
@@ -96,8 +95,8 @@ impl Renderer {
                 }
                 String::new()
             }
-            Renderer::Custom(ref c) => c(state, context)?,
-            Renderer::None => String::new(),
+            Self::Custom(ref c) => c(state, context)?,
+            Self::None => String::new(),
         })
     }
 }

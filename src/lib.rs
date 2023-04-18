@@ -129,14 +129,14 @@
 //! Rendered content can be saved in named snapshots. This allows you reusing rendered content in
 //! later steps, for example generating an RSS feed with generated post content.
 pub use chrono;
-use regex;
+
 pub use serde_json::{self, Map, Value};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::SystemTime;
+
 use std::{env, fs};
 use tera::{self, Tera};
 pub use uuid::Uuid;
@@ -192,13 +192,13 @@ impl State {
         let names: Vec<&str> = templates.get_template_names().collect();
         println!("{:?}", names);
 
-        match fs::create_dir(&Path::new("./_site/")) {
+        match fs::create_dir(Path::new("./_site/")) {
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
             err => err?,
         }
         let output_dir = PathBuf::from("./_site/").canonicalize()?;
         let current_dir = env::current_dir()?;
-        Ok(State {
+        Ok(Self {
             templates,
             output_dir,
             current_dir,
@@ -262,7 +262,7 @@ impl State {
             return true;
         }
         let fs_depth = self.output_dir.components().count();
-        self.output_dir.push(&dest);
+        self.output_dir.push(dest);
         if self.verbosity > 1 {
             print!(
                 "Checking resource {} against destination path {}... ",
@@ -305,14 +305,14 @@ impl State {
             self.build_actions.insert(
                 dest.clone(),
                 BuildAction {
-                    src: uuid.clone(),
+                    src: uuid,
                     to: Renderer::None,
                 },
             );
             self.artifacts.insert(
-                uuid.clone(),
+                uuid,
                 BuildArtifact {
-                    uuid: uuid.clone(),
+                    uuid,
                     path: dest.clone(),
                     resource,
                     metadata: Default::default(),
@@ -321,9 +321,9 @@ impl State {
             );
         } else {
             self.artifacts.insert(
-                uuid.clone(),
+                uuid,
                 BuildArtifact {
-                    uuid: uuid.clone(),
+                    uuid,
                     path: dest.clone(),
                     resource: dest,
                     metadata: Default::default(),
@@ -343,7 +343,7 @@ impl State {
         renderer: Renderer,
     ) -> Result<Uuid> {
         let resource = resource
-            .strip_prefix(&self.output_dir().parent().unwrap())
+            .strip_prefix(self.output_dir().parent().unwrap())
             .unwrap_or(&resource)
             .to_path_buf();
         let uuid = uuid_from_path(&resource);
@@ -359,12 +359,12 @@ impl State {
                 if self.verbosity > 3 {
                     print!(" and metadata {:#?}", &metadata,);
                 }
-                println!("");
+                println!();
             }
             self.artifacts.insert(
-                uuid.clone(),
+                uuid,
                 BuildArtifact {
-                    uuid: uuid.clone(),
+                    uuid,
                     path: dest.clone(),
                     resource,
                     metadata,
@@ -374,7 +374,7 @@ impl State {
             self.build_actions.insert(
                 dest.clone(),
                 BuildAction {
-                    src: uuid.clone(),
+                    src: uuid,
                     to: renderer,
                 },
             );
@@ -383,9 +383,9 @@ impl State {
                 println!("Using cached _site/{}", dest.display());
             }
             self.artifacts.insert(
-                uuid.clone(),
+                uuid,
                 BuildArtifact {
-                    uuid: uuid.clone(),
+                    uuid,
                     path: dest.clone(),
                     resource,
                     metadata,
@@ -474,7 +474,7 @@ impl State {
                     if self.verbosity > 3 {
                         print!(" and metadata {:#?}", &metadata,);
                     }
-                    println!("");
+                    println!();
                 }
                 let mut file = fs::File::create(&self.output_dir)?;
                 file.write_all(contents.as_bytes())?;

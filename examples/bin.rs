@@ -19,8 +19,6 @@
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
 
-use libssg;
-
 /* This expects the following directory tree:
  *  ├── bin.rs
  *  ├── css
@@ -50,8 +48,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 libssg::pandoc(),
                 Box::new(|state, path| {
                     let path = path
-                        .strip_prefix(&state.output_dir().parent().unwrap())
-                        .unwrap_or(&path)
+                        .strip_prefix(state.output_dir().parent().unwrap())
+                        .unwrap_or(path)
                         .to_path_buf();
                     if state.verbosity() > 3 {
                         println!("adding {} to RSS snapshot", path.display());
@@ -96,12 +94,15 @@ fn build_rss_feed(path: std::path::PathBuf, compiler: libssg::Compiler) -> libss
             path.clone(),
             path.clone(),
             &compiler,
-            libssg::Renderer::Custom(Box::new(|metadata| {
-                Ok(if let libssg::Value::Object(ref map) = metadata {
+            libssg::Renderer::Custom(Box::new(|_, _metadata| {
+                /*
+                Ok(if let libssg::Map::Value(libssg::Value::Object(ref map) = metadata {
                     map.get("body").and_then(|b| b.as_str()).ok_or_else(|| format!("Internal error while building rss feed: metadata does not contain `body`: {:#?}", &map))?.to_string()
                 } else {
                     String::new()
                 })
+                */
+                Ok(String::new())
             })),
         )?;
         Ok(())

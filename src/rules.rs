@@ -89,7 +89,7 @@ pub fn copy<P: Into<MatchPattern>>(pattern: P, route: Route) -> Rule {
             for entry in pattern.list() {
                 let rel_path = entry
                     .path()
-                    .strip_prefix(&state.current_dir())?
+                    .strip_prefix(state.current_dir())?
                     .to_path_buf();
                 state.copy_page(
                     rel_path.clone(),
