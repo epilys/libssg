@@ -82,7 +82,7 @@ pub mod pandoc {
         let meta = output.meta;
 
         meta.into_iter()
-            .map(|(key, metaval)| (key, metaval.into()))
+            .map(|(key, metaval)| (key.replace("-", "_"), metaval.into()))
             .collect::<_>()
     }
 
@@ -284,15 +284,15 @@ pub mod rss {
                     ttl: 1800,
                 });
             }
-            let mut handlebars = Handlebars::new();
-            handlebars.register_helper("include", Box::new(include_helper));
+            //let mut handlebars = Handlebars::new();
+            //handlebars.register_helper("include", Box::new(include_helper));
 
-            let test = handlebars.render_template(
-                RSS_TEMPLATE,
-                &json!({ "items": rss_items, "config": configuration, "path": dest_path }),
-            )?;
+            //let test = handlebars.render_template(
+            //    RSS_TEMPLATE,
+            //    &json!({ "items": rss_items, "config": configuration, "path": dest_path }),
+            //)?;
+            //metadata_map.insert("body".into(), test.into());
             let mut metadata_map: Map<String, Value> = Map::new();
-            metadata_map.insert("body".into(), test.into());
             Ok(metadata_map)
         })
     }

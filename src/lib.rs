@@ -100,15 +100,16 @@
 //! Rendered content can be saved in named snapshots. This allows you reusing rendered content in
 //! later steps, for example generating an RSS feed with generated post content.
 pub use chrono;
-use handlebars;
-use handlebars::Handlebars;
 use regex;
-pub use serde_json::{Map, Value};
+pub use serde_json::{self, Map, Value};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 use std::{env, fs};
+use tera::{self, Tera};
 pub use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -121,9 +122,6 @@ pub use match_patterns::*;
 
 pub mod rules;
 pub use rules::*;
-
-pub mod helpers;
-pub use helpers::*;
 
 pub mod compilers;
 pub use compilers::*;
@@ -145,24 +143,26 @@ pub struct State {
     snapshots: HashMap<String, Vec<Uuid>>,
     artifacts: HashMap<Uuid, BuildArtifact>,
     build_actions: HashMap<PathBuf, BuildAction>,
-    templates: Handlebars<'static>,
+    templates: Tera,
+    templates_dir: PathBuf,
     output_dir: PathBuf,
     current_dir: PathBuf,
 
     err: Option<Box<dyn std::error::Error>>,
     force_generate: bool,
     verbosity: u8,
+    url_root: PathBuf,
 }
 
 impl State {
     /// Create new state.
     pub fn new() -> Result<Self> {
-        let mut templates = Handlebars::new();
-        templates
-            .register_templates_directory("", "./templates")
-            .map_err(|_| "Could not find templates/ dir")?;
-        templates.register_helper("include", Box::new(include_helper));
-        templates.register_helper("date_fmt", Box::new(date_fmt));
+        let templates_dir = PathBuf::from("./templates").canonicalize()?;
+        let templates = Tera::new("templates/*")
+            .map_err(|err| format!("Could not find templates/ dir: {}", err))?;
+        let names: Vec<&str> = templates.get_template_names().collect();
+        println!("{:?}", names);
+
         match fs::create_dir(&Path::new("./_site/")) {
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
             err => err?,
@@ -173,6 +173,7 @@ impl State {
             templates,
             output_dir,
             current_dir,
+            templates_dir,
             artifacts: Default::default(),
             build_actions: Default::default(),
 
@@ -184,7 +185,13 @@ impl State {
                 .as_ref()
                 .and_then(|v| u8::from_str_radix(v, 10).ok())
                 .unwrap_or(1),
+            url_root: PathBuf::new(),
         })
+    }
+
+    pub fn url_root(mut self, url_root: Cow<'static, str>) -> Self {
+        self.url_root = PathBuf::from(url_root.as_ref());
+        self
     }
 
     /// Sets `force_generate` option.
@@ -376,13 +383,16 @@ impl State {
         template_path: &'static str,
         context: &Map<String, Value>,
     ) -> Result<String> {
-        let template = Path::new(template_path).strip_prefix("templates/").unwrap();
+        let template = Path::new(template_path);
         self.templates
-            .render(&template.display().to_string(), context)
+            .render(
+                &template.display().to_string(),
+                &tera::Context::from_value(Value::Object(context.clone())).unwrap(),
+            )
             .map_err(|err| {
                 format!(
                     "Encountered error when trying to render with template `{}`: {}",
-                    err, template_path
+                    template_path, err
                 )
                 .into()
             })
@@ -410,6 +420,10 @@ impl State {
         for (mut path, action) in actions {
             let artifact = &self.artifacts[&action.src];
             let mut metadata = artifact.metadata.clone();
+            metadata.insert(
+                "ROOT_PREFIX".to_string(),
+                serde_json::json! { self.url_root.display().to_string() },
+            );
             let contents = match action.to {
                 Renderer::None => None,
                 renderer => Some(renderer.render(self, &mut metadata)?),

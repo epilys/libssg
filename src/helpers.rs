@@ -80,3 +80,22 @@ pub fn date_fmt(
     out.write(&date.format(&fmt_string).to_string())?;
     Ok(())
 }
+
+/// Usage: `{{ url_prefix }}`
+pub fn url_prefix(
+     : &Helper,
+    h: &Handlebars,
+    c: &Context,
+    rc: &mut RenderContext,
+    out: &mut dyn Output,
+) -> Result<(), RenderError> {
+    use chrono::TimeZone;
+    let disable_escape = rc.is_disable_escape();
+    rc.set_disable_escape(true);
+    h.register_escape_fn(|s| s.to_string());
+
+    out.write(&c.get("ROOT_PREFIX"))?;
+    rc.set_disable_escape(disable_escape);
+    h.unregister_escape_fn();
+    Ok(())
+}

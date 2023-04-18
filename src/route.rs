@@ -21,7 +21,10 @@
 
 //!Mapping rendered files to relative URLs.
 
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
+
+pub struct RoutePrefix(Cow<'static, str>);
 
 /// Explains how to map the relative file system path to a relative URL.
 pub enum Route {

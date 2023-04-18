@@ -72,7 +72,7 @@ impl Renderer {
     pub fn check_mtime(&self, state: &mut State, dest_path: &Path) -> bool {
         match self {
             Renderer::LoadAndApplyTemplate(ref path) => {
-                state.check_mtime(dest_path, &Path::new(path))
+                state.check_mtime(dest_path, &Path::new(&format!("{}/{}",state.templates_dir.display(), path)))
             }
             Renderer::Pipeline(ref list) => list
                 .iter()
