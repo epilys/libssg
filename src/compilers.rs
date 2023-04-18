@@ -86,6 +86,7 @@ pub mod pandoc {
             .collect::<_>()
     }
 
+    #[allow(dead_code)]
     #[derive(Deserialize, Debug, Default)]
     struct PandocJsonOutput {
         blocks: Value,
@@ -94,6 +95,7 @@ pub mod pandoc {
         meta: HashMap<String, PandocMetaValue>,
     }
 
+    #[allow(clippy::enum_variant_names)]
     #[derive(Deserialize, Debug)]
     #[serde(tag = "t", content = "c")]
     enum PandocMetaValue {
@@ -226,7 +228,7 @@ pub mod rss {
         pub ttl: i32,
     }
 
-    const RSS_TEMPLATE: &str = r#"<?xml version="1.0" encoding="UTF-8" ?>
+    const _RSS_TEMPLATE: &str = r#"<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
 <channel>
   <title>{{ config.title }}</title>

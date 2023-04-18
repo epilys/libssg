@@ -34,11 +34,8 @@ pub enum MatchPattern {
 
 impl<S: AsRef<str>> From<S> for MatchPattern {
     fn from(from: S) -> Self {
-        if let Ok(r) = regex::Regex::new(from.as_ref()) {
-            Self::Regex(r)
-        } else {
-            Self::Literal(from.as_ref().to_string())
-        }
+        regex::Regex::new(from.as_ref())
+            .map_or_else(|_| Self::Literal(from.as_ref().to_string()), Self::Regex)
     }
 }
 

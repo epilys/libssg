@@ -212,7 +212,7 @@ impl State {
             verbosity: env::var("VERBOSITY")
                 .ok()
                 .as_ref()
-                .and_then(|v| u8::from_str_radix(v, 10).ok())
+                .and_then(|v| v.parse::<u8>().ok())
                 .unwrap_or(1),
             url_root: PathBuf::new(),
         })
