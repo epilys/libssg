@@ -38,12 +38,12 @@
  */
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut state = libssg::State::new()?;
+    let mut state = libssg::State::new(Some(std::path::Path::new("./examples")))?;
     state
         .then(libssg::match_pattern(
             "^posts/*",
             libssg::Route::SetExtension("html"),
-            libssg::Renderer::LoadAndApplyTemplate("templates/default.html"),
+            libssg::Renderer::LoadAndApplyTemplate("default.html"),
             libssg::compiler_seq(
                 libssg::pandoc(),
                 Box::new(|state, path| {
@@ -55,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("adding {} to RSS snapshot", path.display());
                     }
                     let uuid = libssg::uuid_from_path(&path);
-                    state.add_to_snapshot("main-rss-feed".into(), uuid);
+                    //state.add_to_snapshot("main-rss-feed".into(), uuid);
                     Ok(Default::default())
                 }),
             ),
@@ -64,14 +64,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "^index.md",
             libssg::Route::SetExtension("html"),
             libssg::Renderer::Pipeline(vec![
-                libssg::Renderer::LoadAndApplyTemplate("templates/index.html"),
-                libssg::Renderer::LoadAndApplyTemplate("templates/default.html"),
+                libssg::Renderer::LoadAndApplyTemplate("index.html"),
+                libssg::Renderer::LoadAndApplyTemplate("default.html"),
             ]),
             libssg::pandoc(),
         ))
         .then(libssg::copy("^css/*", libssg::Route::Id))
-        .then(build_rss_feed(
-            "rss.xml".into(),
+        /*.then(build_rss_feed(
+            "examples/rss.xml".into(),
             libssg::rss_feed(
                 "main-rss-feed".into(),
                 libssg::RssItem {
@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ttl: 1800,
                 },
             ),
-        ))
+        ))*/
         .finish()?;
     Ok(())
 }

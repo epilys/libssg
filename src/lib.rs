@@ -49,99 +49,99 @@
 #![allow(clippy::multiple_crate_versions, clippy::missing_const_for_fn)]
 
 //! ## How to use
-//! `libssg` is meant to be used as a tool for a custom site generator binary. Common tasks in
-//! static site generation are provided as tools for you to combine them as you see fit in your own
-//! site.
+//! `libssg` is meant to be used as a tool for a custom site generator binary.
+//! Common tasks in static site generation are provided as tools for you to
+//! combine them as you see fit in your own site.
 //!
 //! ### Your binary's structure
-//! In the main function of your binary, you will create a [`State`](State), add a bunch of
-//! [`Rule`s](Rule) to be performed sequentially and then call [`State::finish`](State::finish) to
-//! perform the necessary rendering. Files that didn't change *should* be cached instead of being
-//! regenerated. By executing the binary, the generated site should be up to date with the source
-//! content.
+//! In the main function of your binary, you will create a [`State`](State), add
+//! a bunch of [`Rule`s](Rule) to be performed sequentially and then call
+//! [`State::finish`](State::finish) to perform the necessary rendering. Files
+//! that didn't change *should* be cached instead of being regenerated. By
+//! executing the binary, the generated site should be up to date with the
+//! source content.
 //!
 //! An example binary and project structure:
 //!
 //!```no_run
-//!use libssg::*;
-//!/*
-//! * $ tree
-//! * .
-//! * ├── Cargo.toml etc
-//! * ├── src
-//! * │   └── main.rs
-//! * ├── css
-//! * │   └── *.css
-//! * ├── images
-//! * │   └── *.png
-//! * ├── index.md
-//! * ├── posts
-//! * │   └── *.md
-//! * ├── _site
-//! * │   ├── css
-//! * │   │   └── *.css
-//! * │   ├── images
-//! * │   │   └── *.png
-//! * │   ├── index.html
-//! * │   ├── posts
-//! * │   │   └── *.html
-//! * └── templates
-//! *     ├── default.hbs
-//! *     └── post.hbs
-//!*/
+//! use libssg::*;
+//! /*
+//!  * $ tree
+//!  * .
+//!  * ├── Cargo.toml etc
+//!  * ├── src
+//!  * │   └── main.rs
+//!  * ├── css
+//!  * │   └── *.css
+//!  * ├── images
+//!  * │   └── *.png
+//!  * ├── index.md
+//!  * ├── posts
+//!  * │   └── *.md
+//!  * ├── _site
+//!  * │   ├── css
+//!  * │   │   └── *.css
+//!  * │   ├── images
+//!  * │   │   └── *.png
+//!  * │   ├── index.html
+//!  * │   ├── posts
+//!  * │   │   └── *.html
+//!  * └── templates
+//!  *     ├── default.hbs
+//!  *     └── post.hbs
+//!  */
 //!
-//!
-//!fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!    let mut state = State::new()?;
-//!    state
-//!        .then(match_pattern(
-//!            "^posts/*",
-//!            Route::SetExtension("html"),
-//!               Renderer::Pipeline(vec![
-//!                   Renderer::LoadAndApplyTemplate("templates/post.hbs"),
-//!                   Renderer::LoadAndApplyTemplate("templates/default.hbs"),
-//!               ]),
-//!               pandoc(),
-//!        ))
-//!        .then(match_pattern(
-//!            "index.md",
-//!            Route::SetExtension("html"),
-//!            Renderer::LoadAndApplyTemplate("templates/default.hbs"),
-//!            pandoc(),
-//!        ))
-//!        .then(copy("^images/*", Route::Id))
-//!        .then(copy("^css/*", Route::Id))
-//!        .finish()?;
-//!    Ok(())
-//!}
-//!```
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let mut state = State::new()?;
+//!     state
+//!         .then(match_pattern(
+//!             "^posts/*",
+//!             Route::SetExtension("html"),
+//!             Renderer::Pipeline(vec![
+//!                 Renderer::LoadAndApplyTemplate("templates/post.hbs"),
+//!                 Renderer::LoadAndApplyTemplate("templates/default.hbs"),
+//!             ]),
+//!             pandoc(),
+//!         ))
+//!         .then(match_pattern(
+//!             "index.md",
+//!             Route::SetExtension("html"),
+//!             Renderer::LoadAndApplyTemplate("templates/default.hbs"),
+//!             pandoc(),
+//!         ))
+//!         .then(copy("^images/*", Route::Id))
+//!         .then(copy("^css/*", Route::Id))
+//!         .finish()?;
+//!     Ok(())
+//! }
+//! ```
 //!
 //!`cargo run` and the output is saved at `./_site/`.
 //!
 //! ## Runtime configuration
-//! `libssg` uses some environment variables for configuration but you can also customise this in
-//! your binary. By default the following variables are read:
+//! `libssg` uses some environment variables for configuration but you can also
+//! customise this in your binary. By default the following variables are read:
 //! - `FORCE` if set forces rendering of all resources even if they are cached.
 //! - `VERBOSITY` gets values from `0` up to `5` to change output verbosity.
 //!
 //!
 //! ## Snapshots
-//! Rendered content can be saved in named snapshots. This allows you reusing rendered content in
-//! later steps, for example generating an RSS feed with generated post content.
+//! Rendered content can be saved in named snapshots. This allows you reusing
+//! rendered content in later steps, for example generating an RSS feed with
+//! generated post content.
+use std::{
+    borrow::Cow,
+    env, fs,
+    os::unix::ffi::OsStrExt,
+    path::{Path, PathBuf},
+    process::Command,
+};
+
 pub use chrono;
-
+use indexmap::IndexMap;
+pub use minijinja;
 pub use serde_json::{self, Map, Value};
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::os::unix::ffi::OsStrExt;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
-use std::{env, fs};
-use tera::{self, Tera};
 pub use uuid::Uuid;
-
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub mod route;
 pub use route::*;
@@ -158,6 +158,11 @@ pub use compilers::*;
 pub mod renderers;
 pub use renderers::*;
 
+pub mod error;
+pub use error::*;
+
+pub mod filters;
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -166,18 +171,19 @@ mod tests {
     }
 }
 
-///The state of site render.
+/// The state of site render.
 #[derive(Debug)]
 pub struct State {
-    snapshots: HashMap<String, Vec<Uuid>>,
-    artifacts: HashMap<Uuid, BuildArtifact>,
-    build_actions: HashMap<PathBuf, BuildAction>,
-    templates: Tera,
+    snapshots: IndexMap<String, Vec<Uuid>>,
+    artifacts: IndexMap<Uuid, BuildArtifact>,
+    build_actions: IndexMap<PathBuf, BuildAction>,
+    templates: minijinja::Environment<'static>,
     templates_dir: PathBuf,
     output_dir: PathBuf,
+    output_dirname: String,
     current_dir: PathBuf,
 
-    err: Option<Box<dyn std::error::Error>>,
+    err: Option<Error>,
     force_generate: bool,
     verbosity: u8,
     url_root: PathBuf,
@@ -185,22 +191,35 @@ pub struct State {
 
 impl State {
     /// Create new state.
-    pub fn new() -> Result<Self> {
+    pub fn new(working_dir: Option<&Path>) -> Result<Self> {
+        let working_dir = working_dir
+            .map(Path::to_path_buf)
+            .map(Ok)
+            .unwrap_or_else(std::env::current_dir)?;
+        std::env::set_current_dir(&working_dir).with_context(|| {
+            format!(
+                "Could not set current working dir to {}",
+                working_dir.display()
+            )
+        })?;
         let templates_dir = PathBuf::from("./templates").canonicalize()?;
-        let templates = Tera::new("templates/*")
-            .map_err(|err| format!("Could not find templates/ dir: {}", err))?;
-        let names: Vec<&str> = templates.get_template_names().collect();
-        println!("{:?}", names);
+        let mut templates = minijinja::Environment::new();
+        templates.add_filter("sort_by_key", filters::sort_by_key);
+        templates.set_source(minijinja::Source::from_path("./templates"));
 
-        match fs::create_dir(Path::new("./_site/")) {
+        let output_dirname = env::var("OUTPUT_DIR")
+            .ok()
+            .unwrap_or_else(|| "./_site/".into());
+        match fs::create_dir(Path::new(&output_dirname)) {
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
             err => err?,
         }
-        let output_dir = PathBuf::from("./_site/").canonicalize()?;
+        let output_dir = PathBuf::from(&output_dirname).canonicalize()?;
         let current_dir = env::current_dir()?;
         Ok(Self {
             templates,
             output_dir,
+            output_dirname,
             current_dir,
             templates_dir,
             artifacts: Default::default(),
@@ -241,13 +260,18 @@ impl State {
     }
 
     /// Returns current state of build artifacts.
-    pub fn artifacts(&self) -> &HashMap<Uuid, BuildArtifact> {
+    pub fn artifacts(&self) -> &IndexMap<Uuid, BuildArtifact> {
         &self.artifacts
     }
 
     /// Returns current state of snapshots.
-    pub fn snapshots(&self) -> &HashMap<String, Vec<Uuid>> {
+    pub fn snapshots(&self) -> &IndexMap<String, Vec<Uuid>> {
         &self.snapshots
+    }
+
+    /// Initialize a snapshot.
+    pub fn add_snapshot(&mut self, key: &str) {
+        self.snapshots.entry(key.to_string()).or_default();
     }
 
     /// Adds an artifact to a snapshot.
@@ -294,11 +318,29 @@ impl State {
     /// Adds a build action of copying a resource to a destination, unchanged.
     pub fn copy_page(&mut self, resource: PathBuf, dest: PathBuf) -> Uuid {
         let uuid = uuid_from_path(&resource);
+        let modified_date: Option<chrono::DateTime<chrono::Utc>> = fs::metadata(&resource)
+            .ok()
+            .and_then(|mdata| mdata.modified().ok())
+            .map(|st| st.into());
+        let updated_date: chrono::DateTime<chrono::Utc> = {
+            let output = Command::new("git")
+                .args(["log", "-1", "--date=iso-strict", "--format=\"%ad\"", "--"])
+                .arg(&resource)
+                .output()
+                .with_context(|| format!("Could not execute git log for file {resource:?}"))
+                .unwrap();
+            let s = String::from_utf8_lossy(&output.stdout);
+            chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(s.trim().trim_matches('"'))
+                .with_context(|| format!("Could not parse git date {}", s.trim().trim_matches('"')))
+                .unwrap()
+                .into()
+        };
         if self.check_mtime(&dest, &resource) {
             if self.verbosity > 0 {
                 println!(
-                    "Will copy {} to _site/{}",
+                    "Will copy {} to {}/{}",
                     resource.display(),
+                    self.output_dirname,
                     dest.display()
                 );
             }
@@ -317,6 +359,8 @@ impl State {
                     resource,
                     metadata: Default::default(),
                     contents: String::new(),
+                    modified_date,
+                    updated_date,
                 },
             );
         } else {
@@ -328,13 +372,16 @@ impl State {
                     resource: dest,
                     metadata: Default::default(),
                     contents: String::new(),
+                    modified_date,
+                    updated_date,
                 },
             );
         }
         uuid
     }
 
-    /// Adds a build action with a custom [`Compiler`](crate::compilers::Compiler).
+    /// Adds a build action with a custom
+    /// [`Compiler`](crate::compilers::Compiler).
     pub fn add_page(
         &mut self,
         dest: PathBuf,
@@ -348,6 +395,24 @@ impl State {
             .to_path_buf();
         let uuid = uuid_from_path(&resource);
         let metadata = compiler(self, &resource)?;
+        let modified_date: Option<chrono::DateTime<chrono::Utc>> = fs::metadata(&resource)
+            .and_then(|mdata| mdata.modified())
+            .map(chrono::DateTime::from)
+            .ok();
+        //git log -1 --date=iso-strict --format="%ad" --
+        let updated_date: chrono::DateTime<chrono::Utc> = {
+            let output = Command::new("git")
+                .args(["log", "-1", "--date=iso-strict", "--format=\"%ad\"", "--"])
+                .arg(&resource)
+                .output()
+                .with_context(|| format!("Could not execute git log for file {resource:?}"))?;
+            let s = String::from_utf8_lossy(&output.stdout);
+            chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(s.trim().trim_matches('"'))
+                .with_context(|| {
+                    format!("Could not parse git date {}", s.trim().trim_matches('"'))
+                })?
+                .into()
+        };
         if self.check_mtime(&dest, &resource) || renderer.check_mtime(self, &dest) {
             if self.verbosity > 0 {
                 print!(
@@ -369,6 +434,8 @@ impl State {
                     resource,
                     metadata,
                     contents: String::new(),
+                    modified_date,
+                    updated_date,
                 },
             );
             self.build_actions.insert(
@@ -380,7 +447,7 @@ impl State {
             );
         } else {
             if self.verbosity > 0 {
-                println!("Using cached _site/{}", dest.display());
+                println!("Using cached {}/{}", self.output_dirname, dest.display());
             }
             self.artifacts.insert(
                 uuid,
@@ -390,6 +457,8 @@ impl State {
                     resource,
                     metadata,
                     contents: String::new(),
+                    modified_date,
+                    updated_date,
                 },
             );
         }
@@ -412,12 +481,9 @@ impl State {
         template_path: &'static str,
         context: &Map<String, Value>,
     ) -> Result<String> {
-        let template = Path::new(template_path);
         self.templates
-            .render(
-                &template.display().to_string(),
-                &tera::Context::from_value(Value::Object(context.clone())).unwrap(),
-            )
+            .get_template(template_path)?
+            .render(&minijinja::value::Value::from_serializable(&context))
             .map_err(|err| {
                 format!(
                     "Encountered error when trying to render with template `{}`: {}",
@@ -441,11 +507,18 @@ impl State {
             );
             return Ok(());
         }
+        self.artifacts
+            .sort_by(|_ak, av, _bk, bv| av.updated_date.cmp(&bv.updated_date));
+        self.build_actions.sort_by(|_ak, av, _bk, bv| {
+            self.artifacts[&av.src]
+                .updated_date
+                .cmp(&self.artifacts[&bv.src].updated_date)
+        });
         let fs_depth = self.output_dir.components().count();
         if self.verbosity > 0 {
             println!("Output directory is {}", self.output_dir.display());
         }
-        let actions = self.build_actions.drain().collect::<Vec<(_, _)>>();
+        let actions = self.build_actions.drain(..).collect::<Vec<(_, _)>>();
         for (mut path, action) in actions {
             let artifact = &self.artifacts[&action.src];
             let mut metadata = artifact.metadata.clone();
@@ -516,26 +589,28 @@ pub struct BuildArtifact {
     pub resource: PathBuf,
     pub metadata: Map<String, Value>,
     pub contents: String,
+    pub modified_date: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_date: chrono::DateTime<chrono::Utc>,
 }
 
 impl std::fmt::Debug for BuildArtifact {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            fmt,
-            "BuildArtifact {{ uuid: {}, resource: {}, metadata: {:?}, contents: \"{:.15}...\" }}",
-            self.uuid,
-            self.resource.display(),
-            &self.metadata,
-            &self.contents
-        )
+        fmt.debug_struct(stringify!(BuildArtifact))
+            .field("uuid", &self.uuid)
+            .field("resource", &self.resource.display())
+            .field("metadata", &self.metadata)
+            .field("modified_date", &self.modified_date)
+            .field("updated_date", &self.updated_date)
+            .field("contents", &format!("{:.15}..", self.contents))
+            .finish()
     }
 }
 
 /// Build actions to be performed in the finish stage.
 #[derive(Debug)]
 pub struct BuildAction {
-    src: Uuid,
-    to: Renderer,
+    pub src: Uuid,
+    pub to: Renderer,
 }
 
 /// Create an [`Uuid`](uuid::Uuid) from a [Path] using

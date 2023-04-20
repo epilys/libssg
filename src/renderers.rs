@@ -19,11 +19,14 @@
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
 
-//![Renderer]s are template rendering pipelines used by [Compiler](crate::compilers::Compiler)
+//![Renderer]s are template rendering pipelines used by
+//! [Compiler](crate::compilers::Compiler)
+
+use std::path::Path;
+
+use serde_json::{Map, Value};
 
 use super::{Result, State};
-use serde_json::{Map, Value};
-use std::path::Path;
 
 /// Simple trait to clone boxed closures.
 pub trait BFn: Fn(&mut State, &mut Map<String, Value>) -> Result<String> {
@@ -67,8 +70,8 @@ impl std::fmt::Debug for Renderer {
 }
 
 impl Renderer {
-    /// check if we should overwrite `dest_path` by checking if the template's mtime is newer
-    /// than the destination.
+    /// check if we should overwrite `dest_path` by checking if the template's
+    /// mtime is newer than the destination.
     pub fn check_mtime(&self, state: &mut State, dest_path: &Path) -> bool {
         match self {
             Self::LoadAndApplyTemplate(ref path) => state.check_mtime(

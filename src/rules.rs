@@ -19,18 +19,19 @@
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
 
-//! [`Rule`](Rule)s are steps to perform in the generation process, called from the main function in your
-//! application.
+//! [`Rule`](Rule)s are steps to perform in the generation process, called from
+//! the main function in your application.
 
-use super::*;
 use std::env;
 
-/// [`Rule`](Rule)s are generation steps, that is, separate steps in the generation process. They can
-/// alter [`State`](State) however they like.
+use super::*;
+
+/// [`Rule`](Rule)s are generation steps, that is, separate steps in the
+/// generation process. They can alter [`State`](State) however they like.
 pub type Rule = Box<dyn FnOnce(&mut State) -> Result<()>>;
 
-/// Find matches from current directory and potentially descendants for `pattern`. For each
-/// match, create a route, render and compile.
+/// Find matches from current directory and potentially descendants for
+/// `pattern`. For each match, create a route, render and compile.
 pub fn match_pattern<P: Into<MatchPattern>>(
     pattern: P,
     route: Route,
@@ -81,7 +82,8 @@ pub fn create(path: PathBuf, renderer: Renderer, compiler: Compiler) -> Rule {
     })
 }
 
-/// Copy everything that matches to `pattern` to destinations according to `route`
+/// Copy everything that matches to `pattern` to destinations according to
+/// `route`
 pub fn copy<P: Into<MatchPattern>>(pattern: P, route: Route) -> Rule {
     let patterns = pattern.into();
     Box::new(move |state: &mut State| {

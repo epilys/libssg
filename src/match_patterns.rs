@@ -21,20 +21,23 @@
 
 //! Match patterns for files with regexps or literals.
 
-use super::*;
 use std::env;
 
-/// Match files in current directory by using literals, regex or a list of patterns.
+use super::*;
+
+/// Match files in current directory by using literals, regex or a list of
+/// patterns.
 #[derive(Debug)]
 pub enum MatchPattern {
     Literal(String),
-    Regex(regex::Regex),
+    Regex(Box<regex::Regex>),
     List(Vec<MatchPattern>),
 }
 
 impl<S: AsRef<str>> From<S> for MatchPattern {
     fn from(from: S) -> Self {
         regex::Regex::new(from.as_ref())
+            .map(Box::new)
             .map_or_else(|_| Self::Literal(from.as_ref().to_string()), Self::Regex)
     }
 }

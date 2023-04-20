@@ -19,13 +19,15 @@
  * along with libssg. If not, see <http://www.gnu.org/licenses/>.
  */
 
-//![`Compiler`](Compiler)s are functions or closures that transform resource files (think stylesheets, text in markdown, etc) to something.
+//![`Compiler`](Compiler)s are functions or closures that transform resource
+//! files (think stylesheets, text in markdown, etc) to something.
 
 use super::*;
 
-///[`Compiler`](Compiler)s are functions or closures that transform resource files (think stylesheets, text in markdown, etc) to
-/// something. A compiler that uses `pandoc` is provided in [crate::pandoc], it expects a pandoc markdown file with
-/// optional metadata in the preamble like so:
+/// [`Compiler`](Compiler)s are functions or closures that transform resource
+/// files (think stylesheets, text in markdown, etc) to something. A compiler
+/// that uses `pandoc` is provided in [crate::pandoc], it expects a pandoc
+/// markdown file with optional metadata in the preamble like so:
 ///
 /// ```text
 ///  ---
@@ -37,17 +39,19 @@ use super::*;
 /// Lorem ipsum.
 /// ```
 ///
-/// [`Compiler`](Compiler)s' only obligation is transforming the contents of the given file `path` into a
-/// [String] by adding it to the metadata map with the key `body`.
+/// [`Compiler`](Compiler)s' only obligation is transforming the contents of the
+/// given file `path` into a [String] by adding it to the metadata map with the
+/// key `body`.
 pub type Compiler = Box<dyn Fn(&mut State, &Path) -> Result<Map<String, Value>>>;
 
 pub use pandoc::pandoc;
 pub mod pandoc {
-    use super::*;
-    use serde::{self, Deserialize};
-    use serde_json;
-    use serde_json::{Map, Value};
     use std::collections::HashMap;
+
+    use serde::{self, Deserialize};
+    use serde_json::{self, Map, Value};
+
+    use super::*;
     pub fn pandoc() -> Compiler {
         Box::new(|state: &mut State, path: &Path| {
             let metadata = Command::new("pandoc")
@@ -215,8 +219,9 @@ pub mod pandoc {
 pub use rss::*;
 
 pub mod rss {
-    use super::*;
     use serde::{self, Serialize};
+
+    use super::*;
 
     #[derive(Serialize)]
     pub struct RssItem {
@@ -252,7 +257,11 @@ pub mod rss {
         Box::new(move |state: &mut State, _dest_path: &Path| {
             if !state.snapshots.contains_key(&snapshot_name) {
                 // No posts configured/found
-                Err(format!("There are no snapshots with key `{}`, is the source rule empty (ie producing no items) or have you typed the name wrong?", &snapshot_name))?;
+                Err(format!(
+                    "There are no snapshots with key `{}`, is the source rule empty (ie producing \
+                     no items) or have you typed the name wrong?",
+                    &snapshot_name
+                ))?;
             }
 
             let snapshot = &state.snapshots[&snapshot_name];
@@ -290,7 +299,8 @@ pub mod rss {
 
             //let test = handlebars.render_template(
             //    RSS_TEMPLATE,
-            //    &json!({ "items": rss_items, "config": configuration, "path": dest_path }),
+            //    &json!({ "items": rss_items, "config": configuration, "path": dest_path
+            // }),
             //)?;
             //metadata_map.insert("body".into(), test.into());
             let metadata_map: Map<String, Value> = Map::new();
