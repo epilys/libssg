@@ -1,4 +1,10 @@
-# libssg
+# libssg [![License]][gpl3]&nbsp;[![No Maintenance Intended]][no-maintenance]
+
+[gpl3]: https://github.com/epilys/libssg/blob/master/LICENSE.md
+[License]: https://img.shields.io/github/license/epilys/libssg?color=white
+[No Maintenance Intended]: https://img.shields.io/badge/No%20Maintenance%20Intended-%F0%9F%97%99-red
+[no-maintenance]: https://unmaintained.tech/
+
 > static site generation library
 
 Build your own executable static generator that includes your building logic instead of using configuration files and command line arguments. Inspired by [Hakyll](https://jaspervdj.be/hakyll/).
